@@ -84,7 +84,6 @@ fun BookNoteApp() {
             }
         }
     }
-
     Box(modifier = Modifier.fillMaxSize()) {
         // 【核心修改点】给 NavHost 注入了四大原生的阻尼丝滑转场动画，页面跳转不再生硬！
         NavHost(

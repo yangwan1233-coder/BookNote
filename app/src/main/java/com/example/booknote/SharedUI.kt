@@ -73,7 +73,6 @@ fun FloatingBottomBar(navController: NavHostController, currentRoute: String?, m
         }
     }
 }
-
 @Composable
 fun YearHeader(year: String) {
     Box(modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp), contentAlignment = Alignment.Center) {

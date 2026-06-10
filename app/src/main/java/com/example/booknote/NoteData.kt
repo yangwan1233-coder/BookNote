@@ -89,7 +89,6 @@ fun loadNotesFromDisk(context: Context): List<Note> {
     } catch (e: Exception) { e.printStackTrace() }
     return emptyList()
 }
-
 fun copyUriToSystemStorage(context: Context, uri: Uri, customName: String? = null): String? {
     val uriStr = getSystemStorageUri(context)
     return try {
