@@ -5,16 +5,12 @@ plugins {
 
 android {
     namespace = "com.example.booknote"
-    compileSdk {
-        version = release(36) {
-            minorApiLevel = 1
-        }
-    }
+    compileSdk = 36 // 武器库：使用 Android 16 的最新代码包开发
 
     defaultConfig {
         applicationId = "com.example.booknote"
-        minSdk = 36
-        targetSdk = 36
+        minSdk = 31 // 👈 【核心修改】门槛：最低只允许 Android 12 及以上的手机安装！抛弃老旧历史包袱。
+        targetSdk = 36 // 靶心：以 Android 16 为绝对优先的最高标准进行底层性能与 UI 优化！
         versionCode = 1
         versionName = "1.0"
 
@@ -23,9 +19,8 @@ android {
 
     buildTypes {
         release {
-            // 暂时关闭代码混淆和资源压缩，确保打包 100% 成功
+            // 暂时关闭代码混淆，确保打包 100% 成功
             isMinifyEnabled = false
-            isShrinkResources = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
@@ -55,7 +50,10 @@ dependencies {
     androidTestImplementation(libs.androidx.junit)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.compose.ui.tooling)
+
+    // 第三方核心库
     implementation("androidx.compose.material:material-icons-extended")
     implementation("io.coil-kt:coil-compose:2.6.0")
     implementation("androidx.documentfile:documentfile:1.0.1")
+    implementation("com.google.code.gson:gson:2.10.1")
 }

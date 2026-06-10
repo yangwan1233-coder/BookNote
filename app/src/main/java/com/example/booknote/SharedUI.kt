@@ -77,39 +77,91 @@ fun FloatingBottomBar(navController: NavHostController, currentRoute: String?, m
 @Composable
 fun YearHeader(year: String) {
     Box(modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp), contentAlignment = Alignment.Center) {
-        Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)) {
-            Text(text = year, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
+        // 【核心修改点】增加了 shadowElevation = 8.dp，并去掉了半透明效果以保证阴影纯净
+        Surface(
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            shadowElevation = 8.dp
+        ) {
+            Text(
+                text = year,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
+            )
         }
     }
 }
-
-// 核心优化：纯手工打造的左滑悬停组件（完美解决原生组件无法悬停露出的痛点）
+// 核心优化：纯手工打造的左滑悬停组件（加入立体阴影与顶级物理弹簧动效）
 @Composable
 fun SwipeHoverNoteCard(note: Note, showDate: Boolean, onClick: () -> Unit, onArchive: () -> Unit, onDelete: () -> Unit) {
     val scope = rememberCoroutineScope()
     val offsetX = remember { Animatable(0f) }
     val density = LocalDensity.current
-    val buttonWidth = 120.dp
+
+    // 【修改点 1】向左再移动一点：将悬停漏出的最大宽度从 120.dp 扩大到 160.dp，空间更宽裕防误触
+    val buttonWidth = 160.dp
     val buttonWidthPx = with(density) { buttonWidth.toPx() }
+
+    // 用于操作按钮的点击“触觉缩放”动画状态
+    var archiveScale by remember { mutableStateOf(1f) }
+    var deleteScale by remember { mutableStateOf(1f) }
+    val animatedArchiveScale by androidx.compose.animation.core.animateFloatAsState(targetValue = archiveScale, label = "archive")
+    val animatedDeleteScale by androidx.compose.animation.core.animateFloatAsState(targetValue = deleteScale, label = "delete")
 
     Box(modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
         // 底层：露出存档和删除按钮
-        Row(modifier = Modifier.fillMaxSize().padding(end = 16.dp), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { scope.launch { offsetX.animateTo(0f) }; onArchive() }, modifier = Modifier.size(48.dp).background(Color(0xFF4CAF50), CircleShape)) { Icon(Icons.Default.Archive, "存档", tint = Color.White) }
-            Spacer(modifier = Modifier.width(8.dp))
-            IconButton(onClick = { scope.launch { offsetX.animateTo(0f) }; onDelete() }, modifier = Modifier.size(48.dp).background(Color(0xFFF44336), CircleShape)) { Icon(Icons.Default.Delete, "删除", tint = Color.White) }
+        Row(
+            modifier = Modifier.fillMaxSize().padding(end = 24.dp),
+            horizontalArrangement = Arrangement.End,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // 【修改点 2】操作时的顶级动画：点击时按钮先回缩，随后卡片自动平滑归位，最后执行归档
+            IconButton(
+                onClick = {
+                    scope.launch {
+                        archiveScale = 0.8f // 按下回缩反馈
+                        kotlinx.coroutines.delay(100)
+                        archiveScale = 1f   // 迅速弹回
+                        // 挂起等待：先让卡片丝滑地滑回 0 的位置遮住按钮
+                        offsetX.animateTo(0f, animationSpec = androidx.compose.animation.core.tween(300, easing = androidx.compose.animation.core.FastOutSlowInEasing))
+                        onArchive() // 动画播放完毕后，真正执行底层归档操作
+                    }
+                },
+                modifier = Modifier.size(48.dp).scale(animatedArchiveScale).background(Color(0xFF4CAF50), CircleShape)
+            ) { Icon(Icons.Default.Archive, "存档", tint = Color.White) }
+
+            Spacer(modifier = Modifier.width(16.dp))
+
+            IconButton(
+                onClick = {
+                    scope.launch {
+                        deleteScale = 0.8f // 按下回缩反馈
+                        kotlinx.coroutines.delay(100)
+                        deleteScale = 1f   // 迅速弹回
+                        // 挂起等待：先让卡片丝滑地滑回 0 的位置遮住按钮
+                        offsetX.animateTo(0f, animationSpec = androidx.compose.animation.core.tween(300, easing = androidx.compose.animation.core.FastOutSlowInEasing))
+                        onDelete() // 动画播放完毕后，真正执行底层删除操作
+                    }
+                },
+                modifier = Modifier.size(48.dp).scale(animatedDeleteScale).background(Color(0xFFF44336), CircleShape)
+            ) { Icon(Icons.Default.Delete, "删除", tint = Color.White) }
         }
 
-        // 顶层：笔记卡片，带滑动手势
+        // 顶层：笔记卡片，带滑动手势与阴影
         Card(
             modifier = Modifier.fillMaxWidth().offset { IntOffset(offsetX.value.roundToInt(), 0) }
                 .pointerInput(Unit) {
                     detectHorizontalDragGestures(
                         onDragEnd = {
                             scope.launch {
-                                // 松手时，如果滑动超过一半按钮宽度，就悬停展开；否则回弹关闭
-                                if (offsetX.value < -buttonWidthPx / 2) offsetX.animateTo(-buttonWidthPx, spring())
-                                else offsetX.animateTo(0f, spring())
+                                // 【修改点 3】悬停和归位动画：加入阻尼物理弹簧 (spring) 效果，让回弹和吸附充满 Q 弹质感
+                                if (offsetX.value < -buttonWidthPx / 2) {
+                                    offsetX.animateTo(-buttonWidthPx, spring(dampingRatio = 0.65f, stiffness = 300f))
+                                } else {
+                                    offsetX.animateTo(0f, spring(dampingRatio = 0.65f, stiffness = 300f))
+                                }
                             }
                         }
                     ) { change, dragAmount ->
@@ -120,7 +172,10 @@ fun SwipeHoverNoteCard(note: Note, showDate: Boolean, onClick: () -> Unit, onArc
                         }
                     }
                 }.clickable(onClick = onClick),
-            shape = CircleShape, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            shape = CircleShape,
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+            // 【修改点 4】增加 8.dp 阴影：使其拥有与悬浮底部导航栏完全一致的立体层次感！
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
         ) {
             Row(modifier = Modifier.fillMaxWidth().fillMaxHeight().padding(vertical = 18.dp, horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (showDate) Text(text = formatTime(note.createdAt), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f), modifier = Modifier.padding(end = 12.dp))
