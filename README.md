@@ -73,9 +73,8 @@
 * 🐙 **GitHub 官方仓库**：[yangwan1233-coder/BookNote](https://github.com/yangwan1233-coder/BookNote)
 
 感谢您对 **BookNote** 的认可与支持！如果您喜欢这个项目，欢迎在右上角帮作者点一个宝贵的 **⭐ Star**，这是我们持续打磨极致体验的最大动力！
-
 <p align="center">
-  <img src="home.png" alt="主页" width="45%" />
-  &nbsp; &nbsp; &nbsp;
-  <img src="settings.png" alt="设置页" width="45%" />
+<img width="45%" height="2670" alt="home" src="https://github.com/user-attachments/assets/f98f1376-1071-49d1-b361-f30897fe77a5" />
+&nbsp; &nbsp; &nbsp;
+<img width="45%" height="2670" alt="settings" src="https://github.com/user-attachments/assets/cd5d1479-9929-4ac2-9279-064f4f7ddd1a" />
 </p>
