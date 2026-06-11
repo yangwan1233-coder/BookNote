@@ -11,8 +11,8 @@ android {
         applicationId = "com.example.booknote"
         minSdk = 31 // 👈 【核心修改】门槛：最低只允许 Android 12 及以上的手机安装！抛弃老旧历史包袱。
         targetSdk = 36 // 靶心：以 Android 16 为绝对优先的最高标准进行底层性能与 UI 优化！
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
