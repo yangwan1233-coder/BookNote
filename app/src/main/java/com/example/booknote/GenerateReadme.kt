@@ -1,4 +1,126 @@
 package com.example.booknote
 
-class GenerateReadme {
+import java.io.File
+
+/**
+ * 🚀 BookNote 自动化文档生成器
+ * 右键点击此文件，选择 "Run 'GenerateReadmeKt'"
+ * 运行后会自动在项目根目录下生成/更新最专业的 GitHub README.md 文件！
+ */
+fun main() {
+    // 1. 定义高逼格的 Markdown 文本内容
+    val readmeContent = """
+        # 🎨 BookNote — 旗舰级莫奈艺术风格纯本地备忘录
+
+        [![Android Standard](https://img.shields.io/badge/Platform-Android%205.0%20--%2016%2B-green.svg)](https://developer.android.com/)
+        [![Kotlin](https://img.shields.io/badge/Language-Kotlin%201.9%2B-blue.svg)](https://kotlinlang.org/)
+        [![Jetpack Compose](https://img.shields.io/badge/UI%20Framework-Jetpack%20Compose%20M3-orange.svg)](https://developer.android.com/jetpack/compose)
+        [![License](https://img.shields.io/badge/License-Open%20Source-purple.svg)](https://github.com/)
+        [![Version](https://img.shields.io/badge/Version-v1.2.0-red.svg)](https://github.com/)
+
+        **BookNote** 是一款专为极致记录体验而生的现代 Android 备忘录应用。本软件深度适配 **Android 16** 最新系统特性，全面基于 **Jetpack Compose (Material 3)** 声明式 UI 架构开发。
+
+        我们坚信数据主权属于用户。因此，BookNote 采用 **100% 纯单机架构（0 网络权限）**，并首创将法国印象派大师克劳德·莫奈（Claude Monet）的光影艺术融入全局换肤引擎，配合行云流水般的工业级内联容器变换动画，为您打造一块优雅、绝对私密且灵动纯粹的数字文字宣纸。
+
+        ---
+
+        ## ✨ 核心亮点功能
+
+        ### 1. 🎨 莫奈印象派色彩引擎 (Monet Global Theme Engine)
+        * **五款艺术大师预设**：内置 **睡莲蓝绿**（MonetWaterLily）、**日出印象橘粉**（MonetSunrise）、**普罗旺斯紫**（MonetLavender）、**干草堆秋黄**（MonetHaystacks）以及 **吉维尼花园绿**（MonetGarden）5 款低饱和度、充满高级哑光质感的印象派经典调色板。
+        * **双轨 RGB 自由微调**：主色调、次色调全面解耦。内置严密的数字滑轮调节，支持在 `0f..255f` 范围内实时改变主次色相，定制绝不撞衫的极客专属皮肤。
+        * **100% 实心不透明算法**：重构底层着色引擎，摒弃传统的半透明 `alpha` 蒙层。通过将自定义主色与纯黑/纯白在底层进行“光学混合”，生成绝对实心、无阴影穿透的浅色/深色容器底色，主页卡片、年份悬浮气泡、Settings 标题等均完美覆盖，展现高贵的哑光宣纸质感。
+        * **系统级壁纸动态取色**：一键点击“恢复默认主题”，即可重返 Android 12+ 经典的 Material You 动态颜色宇宙，使软件色彩完美跟随系统壁纸变幻。
+
+        ### 2. 🎬 灵动内联容器变换动画 (Fluid Container Transform)
+        * **原位无痕展开**：彻底推翻了传统弹窗突兀、生硬的“黑底压暗遮罩”。在设置界面点击【个性化主题配色】或【数据备份与恢复】时，胶囊按钮直接在**原位置平滑膨胀延展**成一张精致的配置大卡片，其余界面元素自适应被平滑推开。
+        * **优雅折叠收起**：点击右上角控制图标或直接按下**手机物理返回键**，大卡片将遵循物理运动曲线，丝滑地**原位收缩折叠**回初始的胶囊状态。
+        * **防跳跃布局锁 (SizeTransform)**：深度调优高度过渡动画，彻底锁死由于容器高度剧烈变动可能引发的列表生硬跳跃与闪烁，交互如丝般顺滑。
+
+        ### 3. 📝 印刷级图文沉浸式编辑 (Immersive Multi-media Editor)
+        * **防呆实时自动保存**：离开编辑页或直接返回时，内容无感实时秒级持久化至本地；检测到未写入任何文字/图片的空白文档时，将自动无痕销毁，杜绝脏数据。
+        * **双向历史撤销栈**：底部工具舱深度植入独立的历史快照缓冲区，支持高达 30 步的【撤销 (Undo)】与【重做 (Redo)】双向操作，打错字随时反悔。
+        * **文本排版终结者**：
+          * 全盘接管 `LineBreak.Paragraph` 顶层段落断行策略，完美解决中英数、长网址混排时边缘参差不齐、怪异大空白的断行痛点。
+          * 黄金呼吸行高微调（`lineHeight = 24.sp`），提供印刷级的精美排版。
+          * 选中多行文字一键追加圆点 • 列表符号，支持一键光标处精准插入 `()` 快捷括号。
+        * **高级隐藏式画廊**：单篇笔记支持插入多达 9 张超清图片，点击即可进入纯黑大图画廊，左右滑屏看图；长按图片快捷销毁；底部集成系统原生级裁剪与修图工具链。
+
+        ### 4. 🗂️ 极客级本地数据防泄露 (Zero-Trust Local Privacy)
+        * **0 内存占用绑定 (SAF 框架)**：支持通过谷歌官方存储访问框架（SAF）深度绑定您指定的手机系统公开文件夹（如 `Documents/BookNote`）。所有文本数据与高清原图直存系统盘，App 就算不小心卸载，数据也永不丢失。
+        * **图库防污染黑科技**：底层在笔记存储目录中独家隐式创建 `.nomedia` 隐私防卫文件，强行拦截手机系统图库对您笔记内私密图片的扫描与暴露。
+        * **一键换机完整克隆**：支持将本地所有文本以及【全部引用的高清图片文件】完美打包成通用的标准 `.zip` 压缩包，实现无感跨设备克隆与完美恢复。
+
+        ---
+
+        ## 🛠️ 核心开发技术栈
+
+        本应用完全采用现代 Android 旗舰架构与主流技术方案进行编写：
+
+        * **核心语言**：Kotlin (简洁高效，支持协程异步挂起操作)
+        * **UI 框架**：Jetpack Compose (Material 3 规范设计，全声明式组件)
+        * **架构模式**：纯本地 MVI/MVVM 状态驱动流
+        * **路由导航**：Navigation Compose (深度定制四大原生阻尼丝滑页面转场动画)
+        * **异步处理**：Kotlin Coroutines (协程异步 I/O 文件读写，零卡顿)
+        * **图片加载**：Coil (超轻量级 Compose 原生图片异步加载与缓存库)
+        * **数据持久化**：SharedPreferences (基础配置) + SAF 文件流系统 (笔记原文件)
+
+        ---
+
+        ## 📦 快速编译与运行指引
+
+        ### 1. 环境准备
+        * **Android Studio**：建议安装最新版本（如 **Ladybug 2024.2.1** 或更新版本），以完整支持 Android 16 SDK。
+        * **JDK 版本**：Java 17 或 Java 21。
+        * **Gradle 版本**：Gradle 8.5+ 及对应配套的 Android Gradle Plugin (AGP)。
+
+        ### 2. 编译步骤
+        1. 使用 Git 将项目克隆至本地：
+           ```bash
+           git clone [https://github.com/yangwan1233-coder/BookNote.git](https://github.com/yangwan1233-coder/BookNote.git)
+           ```
+        2. 打开 Android Studio，选择 `Open` 导入克隆下来的 `BookNote` 项目根目录。
+        3. 等待 Gradle Sync 同步进度条跑完。
+        4. 确保手机已开启「USB 调试」，将手机用数据线连接至电脑（或启动 Android 16 模拟器）。
+        5. 点击 Android Studio 顶部工具栏绿色的 **Run (▶️)** 按钮，即可将软件编译并安装至您的设备中。
+
+        ---
+
+        ## 🛡️ 隐私安全合规宣言与安装须知
+
+        1. **绝对单机**：本软件在 `AndroidManifest.xml` 中 **未申请任何联网权限 (INTERNET)**。这在物理层面上彻底封死了数据流出渠道。您的任何隐私、笔记、备份、图片均绝无可能被上传至任何云端服务器。
+        2. **拒绝流氓权限**：本软件不申请“读取通话记录”、“读取手机联系人”、“获取全局定位”等任何无关的流氓隐私权限。相册读取完全使用系统级安全的 **Photo Picker（照片选择器）**，App 只能拿到您主动勾选的那几张图片的单次访问权。
+        3. **国产 ROM 提示安全风险说明**：
+           由于本软件属于本地自签名开源作品，且未向国内各大手机厂商（小米、OPPO、vivo、华为等）的应用商店支付高额的备案与人工审核费用，因此在通过浏览器下载 APK 并首次安装时，国产 ROM 的安全纯净模式会常规提示“未知开发者”、“未通过人工安全检测”或“存在未知风险”。
+           **此为正常的生态隔离现象**。由于本软件完全不联网且无任何敏感权限，您可以放心地**输入密码或勾选“无视风险，继续安装”**。
+
+        ---
+
+        ## 📬 意见反馈与联系作者
+
+        如果您在使用或二次开发过程中有任何疑问、好的想法，或者发现了潜在的 Bug，欢迎通过以下渠道与作者取得联系或提交 issue 共同维护：
+
+        * 📩 **作者邮箱**：[3363099285@qq.com](mailto:3363099285@qq.com)
+        * 📱 **酷安社区 ID**：[@Yangwan1233](https://www.coolapk.com/)
+        * 🐙 **GitHub 官方仓库**：[yangwan1233-coder/BookNote](https://github.com/yangwan1233-coder/BookNote)
+
+        感谢您对 **BookNote** 的认可与支持！如果您喜欢这个项目，欢迎在右上角帮作者点一个宝贵的 **⭐ Star**，这是我们持续打磨极致体验的最大动力！
+    """.trimIndent()
+
+    try {
+        // 2. 自动定位项目的根目录（通过连续向上一级查找，直到找到包含本地代码的顶层根目录）
+        var currentDir = File(System.getProperty("user.dir") ?: ".")
+        while (currentDir.parentFile != null && !File(currentDir, "app").exists()) {
+            currentDir = currentDir.parentFile
+        }
+
+        // 3. 在项目最外层根目录下创建或更新 README.md
+        val outputFile = File(currentDir, "README.md")
+        outputFile.writeText(readmeContent, Charsets.UTF_8)
+
+        println("🎉 [自动化成功] README.md 已完美生成在项目根目录：${outputFile.absolutePath}")
+        println("💡 [提示] 现在打开 Android Studio 的 Terminal 终端，输入 git add README.md 即可提交到 GitHub！")
+    } catch (e: Exception) {
+        println("❌ [生成失败] 发生错误: ${e.message}")
+    }
 }

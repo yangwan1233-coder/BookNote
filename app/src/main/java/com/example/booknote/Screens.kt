@@ -212,7 +212,16 @@ fun EditNoteScreen(navController: NavHostController, noteId: String, notes: Muta
                     Text(text = "编辑: ${formatTime(System.currentTimeMillis(), "yyyy-MM-dd HH:mm")}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
                 }
             }
-            Box(modifier = Modifier.fillMaxWidth().padding(bottom = 40.dp), contentAlignment = Alignment.Center) {
+            //底部功能按钮
+            Box(
+                modifier = Modifier
+                     // 【核心1：绝对锚点】
+                    .fillMaxWidth()                // 【核心2：横向占满】
+                    .padding(                      // 【核心3：安全区与呼吸距】
+                        bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 24.dp
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
                 Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.95f), shadowElevation = 8.dp) {
                     Row(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = {
@@ -221,6 +230,7 @@ fun EditNoteScreen(navController: NavHostController, noteId: String, notes: Muta
                             val end = content.selection.max
 
                             if (start < end) {
+                                // 1. 处理文本转换
                                 val selectedText = fullText.substring(start, end)
                                 val bulletedSelection = selectedText.split("\n").joinToString("\n") { line ->
                                     if (line.isNotBlank() && !line.trim().startsWith("•")) "• $line" else line
@@ -228,12 +238,17 @@ fun EditNoteScreen(navController: NavHostController, noteId: String, notes: Muta
                                 val newText = fullText.substring(0, start) + bulletedSelection + fullText.substring(end)
                                 content = TextFieldValue(text = newText, selection = TextRange(start, start + bulletedSelection.length))
                                 Toast.makeText(context, "已将选中段落转化为列表", Toast.LENGTH_SHORT).show()
+
+                                // 2. 【核心修复】：把保存历史记录的操作挪到这里面！
+                                // 只有真正修改了文本，才需要把这步操作推入撤销栈
+                                undoStack = (undoStack + content).takeLast(30)
+                                redoStack = emptyList()
+
                             } else {
+                                // 如果没选中任何文字，仅仅弹个窗提醒就行了
+                                // 【核心修复】：去掉了那句爆红的 return@IconButton
                                 Toast.makeText(context, "请先长按滑动选中需要加列表符号的几行文字", Toast.LENGTH_SHORT).show()
-                                return@IconButton
                             }
-                            undoStack = (undoStack + content).takeLast(30)
-                            redoStack = emptyList()
                         }) {
                             Icon(Icons.Default.List, "列表排列", tint = MaterialTheme.colorScheme.primary)
                         }
@@ -348,22 +363,95 @@ fun EditNoteScreen(navController: NavHostController, noteId: String, notes: Muta
 
 @Composable
 fun NoteCardThumbnail(note: Note, showDate: Boolean, onClick: () -> Unit) {
-    // 【阴影统一】给每条笔记的缩略图卡片增加 8.dp 阴影
     Card(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
         shape = CircleShape,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
         elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
     ) {
-        Row(modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min).padding(vertical = 18.dp, horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            // 【改动1】：去掉了 IntrinsicSize.Min，不再依赖文字高度，避免塌陷！
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 18.dp, horizontal = 24.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             if (showDate) {
                 Text(text = formatTime(note.createdAt), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f), modifier = Modifier.padding(end = 12.dp))
             }
+
+            // ================== 终极防塌陷九宫格 ==================
             if (note.imagePaths.isNotEmpty()) {
-                Box(modifier = Modifier.fillMaxHeight().aspectRatio(1f).padding(end = 12.dp)) {
-                    AsyncImage(model = Uri.parse(note.imagePaths.first()), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(8.dp)))
+                val images = note.imagePaths.take(9)
+                val count = images.size
+                val spacing = 2.dp
+
+                Box(modifier = Modifier.padding(end = 12.dp)) {
+                    Box(
+                        // 【改动2】：直接写死 80.dp 的正方形！神挡杀神，佛挡杀佛，绝对不可能塌陷！
+                        modifier = Modifier
+                            .size(80.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                    ) {
+                        when (count) {
+                            1 -> {
+                                AsyncImage(model = Uri.parse(images[0]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                            }
+                            2 -> {
+                                Row(modifier = Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(spacing)) {
+                                    AsyncImage(model = Uri.parse(images[0]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.weight(1f).fillMaxHeight())
+                                    AsyncImage(model = Uri.parse(images[1]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.weight(1f).fillMaxHeight())
+                                }
+                            }
+                            3 -> {
+                                Row(modifier = Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(spacing)) {
+                                    AsyncImage(model = Uri.parse(images[0]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.weight(1f).fillMaxHeight())
+                                    Column(modifier = Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(spacing)) {
+                                        AsyncImage(model = Uri.parse(images[1]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.weight(1f).fillMaxWidth())
+                                        AsyncImage(model = Uri.parse(images[2]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.weight(1f).fillMaxWidth())
+                                    }
+                                }
+                            }
+                            4 -> {
+                                Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(spacing)) {
+                                    Row(modifier = Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(spacing)) {
+                                        AsyncImage(model = Uri.parse(images[0]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.weight(1f).fillMaxHeight())
+                                        AsyncImage(model = Uri.parse(images[1]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.weight(1f).fillMaxHeight())
+                                    }
+                                    Row(modifier = Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(spacing)) {
+                                        AsyncImage(model = Uri.parse(images[2]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.weight(1f).fillMaxHeight())
+                                        AsyncImage(model = Uri.parse(images[3]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.weight(1f).fillMaxHeight())
+                                    }
+                                }
+                            }
+                            else -> {
+                                Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(spacing)) {
+                                    for (row in 0..2) {
+                                        Row(modifier = Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(spacing)) {
+                                            for (col in 0..2) {
+                                                val index = row * 3 + col
+                                                if (index < count) {
+                                                    AsyncImage(
+                                                        model = Uri.parse(images[index]),
+                                                        contentDescription = null,
+                                                        contentScale = ContentScale.Crop,
+                                                        modifier = Modifier.weight(1f).fillMaxHeight()
+                                                    )
+                                                } else {
+                                                    Spacer(modifier = Modifier.weight(1f).fillMaxHeight())
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
+            // ================== 修改结束 ==================
+
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
                 Text(text = if (note.title.isNotBlank()) note.title else "无标题", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Spacer(modifier = Modifier.height(4.dp))
@@ -416,7 +504,19 @@ fun ArchiveScreen(notes: MutableList<Note>, showDate: Boolean, navController: Na
             )
         }
 
-        Surface(modifier = Modifier.align(Alignment.BottomCenter).wrapContentWidth().padding(bottom = 40.dp), shape = CircleShape, color = MaterialTheme.colorScheme.surfaceVariant, shadowElevation = 8.dp) {
+        // 【精准修改点 1】：归档箱底部悬浮栏位置完美对齐大厂全面屏规范
+        Surface(
+            modifier = Modifier
+                .align(Alignment.BottomCenter) // 【核心1：绝对锚点】
+                .fillMaxWidth()                // 【核心2：横向占满】
+                .wrapContentWidth()            // 【兼顾原有属性】：内容弹性收缩居中，防止胶囊变形拉长
+                .padding(                      // 【核心3：安全区与呼吸距】
+                    bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 24.dp
+                ),
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            shadowElevation = 8.dp
+        ) {
             Row(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
                 TextButton(onClick = { navController.popBackStack() }) { Text("返回设置", fontWeight = FontWeight.Bold) }
                 Button(onClick = {
@@ -479,7 +579,19 @@ fun TrashScreen(notes: MutableList<Note>, showDate: Boolean, navController: NavH
             )
         }
 
-        Surface(modifier = Modifier.align(Alignment.BottomCenter).wrapContentWidth().padding(bottom = 40.dp), shape = CircleShape, color = MaterialTheme.colorScheme.surfaceVariant, shadowElevation = 8.dp) {
+        // 【精准修改点 2】：回收站底部悬浮栏位置完美对齐大厂全面屏规范
+        Surface(
+            modifier = Modifier
+                .align(Alignment.BottomCenter) // 【核心1：绝对锚点】
+                .fillMaxWidth()                // 【核心2：横向占满】
+                .wrapContentWidth()            // 【兼顾原有属性】：内容弹性收缩居中，防止胶囊变形拉长
+                .padding(                      // 【核心3：安全区与呼吸距】
+                    bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 24.dp
+                ),
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            shadowElevation = 8.dp
+        ) {
             Row(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 TextButton(onClick = { navController.popBackStack() }) {
                     Text("返回设置", fontWeight = FontWeight.Bold)

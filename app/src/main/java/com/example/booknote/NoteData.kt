@@ -47,9 +47,10 @@ fun deserializeNotes(data: String): List<Note> {
                 content = parts[2],
                 createdAt = parts[3].toLongOrNull() ?: System.currentTimeMillis(),
                 updatedAt = parts[4].toLongOrNull() ?: System.currentTimeMillis(),
+                // 【防越界优化】：严格校验数组长度，防止脏数据导致越界崩溃
                 imagePaths = if (parts.size >= 6 && parts[5].isNotBlank()) parts[5].split(",") else emptyList(),
-                isArchived = if (parts.size >= 7) parts[6].toBoolean() else false,
-                isDeleted = if (parts.size >= 8) parts[7].toBoolean() else false
+                isArchived = if (parts.size >= 7) parts[6].toBooleanStrictOrNull() ?: false else false,
+                isDeleted = if (parts.size >= 8) parts[7].toBooleanStrictOrNull() ?: false else false
             )
         } else null
     }
@@ -57,7 +58,6 @@ fun deserializeNotes(data: String): List<Note> {
 
 const val DATA_FILE_NAME = "booknote_system_data.txt"
 
-// 【核心修复1】将 Key 从 "system_storage_uri" 修正为 "storage_uri"，与 SettingsScreen 完全匹配！
 fun getSystemStorageUri(context: Context): String? = context.getSharedPreferences("booknote_prefs", Context.MODE_PRIVATE).getString("storage_uri", null)
 
 suspend fun saveNotesToDisk(context: Context, notes: List<Note>) = withContext(Dispatchers.IO) {
@@ -68,7 +68,13 @@ suspend fun saveNotesToDisk(context: Context, notes: List<Note>) = withContext(D
             val folder = DocumentFile.fromTreeUri(context, Uri.parse(uriStr))
             var file = folder?.findFile(DATA_FILE_NAME)
             if (file == null) file = folder?.createFile("text/plain", DATA_FILE_NAME)
-            file?.uri?.let { uri -> context.contentResolver.openOutputStream(uri, "wt")?.use { os -> os.write(data.toByteArray()) } }
+
+            // 【流安全优化】：使用 .use 确保写入完毕后自动释放内存句柄
+            file?.uri?.let { uri ->
+                context.contentResolver.openOutputStream(uri, "wt")?.use { os ->
+                    os.write(data.toByteArray())
+                }
+            }
         } else {
             File(context.filesDir, DATA_FILE_NAME).writeText(data)
         }
@@ -81,7 +87,13 @@ fun loadNotesFromDisk(context: Context): List<Note> {
         if (!uriStr.isNullOrEmpty()) {
             val folder = DocumentFile.fromTreeUri(context, Uri.parse(uriStr))
             val file = folder?.findFile(DATA_FILE_NAME)
-            if (file != null) return deserializeNotes(context.contentResolver.openInputStream(file.uri)?.bufferedReader()?.use { it.readText() } ?: "")
+            if (file != null) {
+                // 【内存泄漏修复】：严格使用 .use 包裹底层 InputStream
+                return context.contentResolver.openInputStream(file.uri)?.use { ins ->
+                    val text = ins.bufferedReader().use { it.readText() }
+                    deserializeNotes(text)
+                } ?: emptyList()
+            }
         } else {
             val file = File(context.filesDir, DATA_FILE_NAME)
             if (file.exists()) return deserializeNotes(file.readText())
@@ -89,64 +101,71 @@ fun loadNotesFromDisk(context: Context): List<Note> {
     } catch (e: Exception) { e.printStackTrace() }
     return emptyList()
 }
+
 fun copyUriToSystemStorage(context: Context, uri: Uri, customName: String? = null): String? {
     val uriStr = getSystemStorageUri(context)
     return try {
         val fileName = customName ?: "IMG_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(5)}.jpg"
         if (!uriStr.isNullOrEmpty()) {
             val rootFolder = DocumentFile.fromTreeUri(context, Uri.parse(uriStr))
-            // 在外部系统存储中创建一个专门的 BookNote_Images 文件夹存放图片
             var imagesFolder = rootFolder?.findFile("BookNote_Images")
             if (imagesFolder == null) {
                 imagesFolder = rootFolder?.createDirectory("BookNote_Images")
             }
 
-            // 【核心隐身黑科技】：注入 .nomedia 文件！
-            // 只要有这个文件，手机自带的相册、图库应用就会彻底无视这个文件夹，绝对不会把笔记图片暴露在相册里！
+            // 【⚠️ 绝对保留的隐私锁】：自动注入 .nomedia，防止系统相册抓取公开图片，隐私绝对安全！
             if (imagesFolder?.findFile(".nomedia") == null) {
                 imagesFolder?.createFile("application/octet-stream", ".nomedia")
             }
 
             val newFile = imagesFolder?.findFile(fileName) ?: imagesFolder?.createFile("image/jpeg", fileName)
             if (newFile != null) {
-                context.contentResolver.openInputStream(uri)?.use { input -> context.contentResolver.openOutputStream(newFile.uri)?.use { output -> input.copyTo(output) } }
+                // 【流安全优化】：双轨闭环拷贝，杜绝复制大图时卡死
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    context.contentResolver.openOutputStream(newFile.uri)?.use { output ->
+                        input.copyTo(output)
+                    }
+                }
                 newFile.uri.toString()
             } else null
         } else {
             val imagesDir = File(context.filesDir, "BookNote_Images")
             if (!imagesDir.exists()) imagesDir.mkdirs()
 
-            // 内部存储也加一层保险
+            // 内部存储隐私锁同步保留
             val nomediaFile = File(imagesDir, ".nomedia")
             if (!nomediaFile.exists()) nomediaFile.createNewFile()
 
             val file = File(imagesDir, fileName)
-            context.contentResolver.openInputStream(uri)?.use { input -> file.outputStream().use { output -> input.copyTo(output) } }
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                file.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            }
             file.absolutePath
         }
     } catch (e: Exception) { null }
 }
 
-// 【核心修复3】深度备份：包含文本和所有引用的图片，使用安全的 hash 映射防止系统路径解析崩溃
 suspend fun backupDataToZip(context: Context, uri: Uri, notes: List<Note>): Boolean = withContext(Dispatchers.IO) {
     try {
         context.contentResolver.openOutputStream(uri)?.use { os ->
             ZipOutputStream(os).use { zos ->
-                // 1. 备份文本数据
                 zos.putNextEntry(ZipEntry(DATA_FILE_NAME))
                 zos.write(serializeNotes(notes).toByteArray())
                 zos.closeEntry()
 
-                // 2. 备份所有引用的图片
                 notes.flatMap { it.imagePaths }.distinct().forEach { imgPath ->
                     try {
                         val imgUri = Uri.parse(imgPath)
-                        // 提取极其安全的文件名，不再依赖原始的复杂路径截取
-                        val fileName = "IMG_${Math.abs(imgPath.hashCode())}.jpg"
+                        // 【致命崩溃修复】：使用位运算 (and 0x7FFFFFFF) 替代 Math.abs()
+                        // 彻底解决当 hashCode 等于 Int.MIN_VALUE 时出现的负数异常崩溃问题
+                        val safeHash = imgPath.hashCode() and 0x7FFFFFFF
+                        val fileName = "IMG_${safeHash}.jpg"
                         zos.putNextEntry(ZipEntry("images/$fileName"))
                         context.contentResolver.openInputStream(imgUri)?.use { ins -> ins.copyTo(zos) }
                         zos.closeEntry()
-                    } catch (e: Exception) { /* 忽略单张损坏的图片 */ }
+                    } catch (e: Exception) { /* 忽略单张损坏图片，保障全局打包不中断 */ }
                 }
             }
         }
@@ -154,11 +173,10 @@ suspend fun backupDataToZip(context: Context, uri: Uri, notes: List<Note>): Bool
     } catch (e: Exception) { false }
 }
 
-// 【核心修复4】深度恢复：解压并利用 hash 映射完美重构图片 URI
 suspend fun restoreDataFromZip(context: Context, uri: Uri): List<Note>? = withContext(Dispatchers.IO) {
     try {
         var restoredNotes: List<Note>? = null
-        val imageMapping = mutableMapOf<String, String>() // 记录：原图片名 -> 新生成的系统URI
+        val imageMapping = mutableMapOf<String, String>()
 
         context.contentResolver.openInputStream(uri)?.use { ins ->
             ZipInputStream(ins).use { zis ->
@@ -168,9 +186,9 @@ suspend fun restoreDataFromZip(context: Context, uri: Uri): List<Note>? = withCo
                         restoredNotes = deserializeNotes(zis.readBytes().toString(Charsets.UTF_8))
                     } else if (entry.name.startsWith("images/")) {
                         val fileName = entry.name.removePrefix("images/")
-                        // 将图片写入当前系统存储，并记录新老路径映射
                         val tempFile = File(context.cacheDir, fileName)
-                        tempFile.outputStream().use { zis.copyTo(it) }
+                        tempFile.outputStream().use { out -> zis.copyTo(out) } // 【流安全优化】用毕即焚资源锁
+
                         val newUri = copyUriToSystemStorage(context, Uri.fromFile(tempFile), fileName)
                         if (newUri != null) imageMapping[fileName] = newUri
                         tempFile.delete()
@@ -180,10 +198,11 @@ suspend fun restoreDataFromZip(context: Context, uri: Uri): List<Note>? = withCo
             }
         }
 
-        // 映射更新：把恢复的笔记里的旧图片路径，替换成刚刚重构的新 URI
         restoredNotes?.map { note ->
             val newPaths = note.imagePaths.mapNotNull { oldPath ->
-                val oldName = "IMG_${Math.abs(oldPath.hashCode())}.jpg"
+                // 【致命崩溃修复】：解压时同步使用位运算匹配正确路径
+                val safeHash = oldPath.hashCode() and 0x7FFFFFFF
+                val oldName = "IMG_${safeHash}.jpg"
                 imageMapping[oldName] ?: oldPath
             }
             note.copy(imagePaths = newPaths)

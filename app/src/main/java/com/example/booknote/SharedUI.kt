@@ -20,10 +20,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -34,6 +36,9 @@ import androidx.navigation.NavHostController
 import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -60,7 +65,16 @@ fun ImageGrid(paths: List<String>, columns: Int = 3, modifier: Modifier = Modifi
 fun FloatingBottomBar(navController: NavHostController, currentRoute: String?, modifier: Modifier = Modifier) {
     val selectedIndex = when (currentRoute) { "home" -> 0; "settings" -> 1; else -> 2 }
     val bubbleOffset by animateDpAsState(targetValue = (selectedIndex * 64).dp, animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessVeryLow), label = "bubble")
-    Box(modifier = modifier.fillMaxWidth().padding(bottom = 40.dp), contentAlignment = Alignment.Center) {
+
+    // 【核心修改】：精准去除了死板的 40.dp，替换为大厂级全面屏动态避让逻辑
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(
+                bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 24.dp
+            ),
+        contentAlignment = Alignment.Center
+    ) {
         Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceVariant, tonalElevation = 8.dp, shadowElevation = 8.dp) {
             Box(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp), contentAlignment = Alignment.CenterStart) {
                 Box(modifier = Modifier.offset(x = bubbleOffset).size(48.dp).background(MaterialTheme.colorScheme.primaryContainer, CircleShape))
@@ -73,10 +87,10 @@ fun FloatingBottomBar(navController: NavHostController, currentRoute: String?, m
         }
     }
 }
+
 @Composable
 fun YearHeader(year: String) {
     Box(modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp), contentAlignment = Alignment.Center) {
-        // 【核心修改点】增加了 shadowElevation = 8.dp，并去掉了半透明效果以保证阴影纯净
         Surface(
             shape = CircleShape,
             color = MaterialTheme.colorScheme.surfaceVariant,
@@ -92,70 +106,97 @@ fun YearHeader(year: String) {
         }
     }
 }
-// 核心优化：纯手工打造的左滑悬停组件（加入立体阴影与顶级物理弹簧动效）
+
+private fun formatTime(timestamp: Long): String {
+    val sdf = SimpleDateFormat("MM-dd", Locale.getDefault())
+    return sdf.format(Date(timestamp))
+}
+// 核心优化：修改归档动画，使卡片与按钮作为一个整体向右飞出
 @Composable
 fun SwipeHoverNoteCard(note: Note, showDate: Boolean, onClick: () -> Unit, onArchive: () -> Unit, onDelete: () -> Unit) {
     val scope = rememberCoroutineScope()
-    val offsetX = remember { Animatable(0f) }
+    val offsetX = remember { Animatable(0f) } // 用于卡片拖拽和向左删除
+    val archiveOffsetX = remember { Animatable(0f) } // 用于控制整体向右归档飞出的偏移量
     val density = LocalDensity.current
 
-    // 【修改点 1】向左再移动一点：将悬停漏出的最大宽度从 120.dp 扩大到 160.dp，空间更宽裕防误触
+    val configuration = LocalConfiguration.current
+    val screenWidthPx = with(density) { configuration.screenWidthDp.dp.toPx() }
+
     val buttonWidth = 160.dp
     val buttonWidthPx = with(density) { buttonWidth.toPx() }
 
-    // 用于操作按钮的点击“触觉缩放”动画状态
     var archiveScale by remember { mutableStateOf(1f) }
     var deleteScale by remember { mutableStateOf(1f) }
     val animatedArchiveScale by androidx.compose.animation.core.animateFloatAsState(targetValue = archiveScale, label = "archive")
     val animatedDeleteScale by androidx.compose.animation.core.animateFloatAsState(targetValue = deleteScale, label = "delete")
 
-    Box(modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
-        // 底层：露出存档和删除按钮
+    // 最外层容器
+    Box(modifier = Modifier
+        .fillMaxWidth()
+        .height(IntrinsicSize.Min)
+        .offset { IntOffset(archiveOffsetX.value.roundToInt(), 0) }
+    ) {
         Row(
             modifier = Modifier.fillMaxSize().padding(end = 24.dp),
             horizontalArrangement = Arrangement.End,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 【修改点 2】操作时的顶级动画：点击时按钮先回缩，随后卡片自动平滑归位，最后执行归档
+            // 归档按钮
             IconButton(
                 onClick = {
                     scope.launch {
-                        archiveScale = 0.8f // 按下回缩反馈
-                        kotlinx.coroutines.delay(100)
-                        archiveScale = 1f   // 迅速弹回
-                        // 挂起等待：先让卡片丝滑地滑回 0 的位置遮住按钮
-                        offsetX.animateTo(0f, animationSpec = androidx.compose.animation.core.tween(300, easing = androidx.compose.animation.core.FastOutSlowInEasing))
-                        onArchive() // 动画播放完毕后，真正执行底层归档操作
+                        archiveScale = 0.8f
+                        kotlinx.coroutines.delay(80)
+                        archiveScale = 1f
+                        archiveOffsetX.animateTo(
+                            targetValue = screenWidthPx * 1.2f,
+                            animationSpec = androidx.compose.animation.core.tween(
+                                durationMillis = 250,
+                                easing = androidx.compose.animation.core.FastOutLinearInEasing
+                            )
+                        )
+                        onArchive()
                     }
                 },
-                modifier = Modifier.size(48.dp).scale(animatedArchiveScale).background(Color(0xFF4CAF50), CircleShape)
-            ) { Icon(Icons.Default.Archive, "存档", tint = Color.White) }
+                // 【仅修改此行】：增加了 8.dp 的阴影
+                modifier = Modifier.size(48.dp).scale(animatedArchiveScale).shadow(elevation = 8.dp, shape = CircleShape).background(Color(0xFF4CAF50), CircleShape)
+            ) {
+                Icon(Icons.Default.Archive, "存档", tint = Color.White)
+            }
 
             Spacer(modifier = Modifier.width(16.dp))
 
+// 删除按钮
             IconButton(
                 onClick = {
                     scope.launch {
-                        deleteScale = 0.8f // 按下回缩反馈
-                        kotlinx.coroutines.delay(100)
-                        deleteScale = 1f   // 迅速弹回
-                        // 挂起等待：先让卡片丝滑地滑回 0 的位置遮住按钮
-                        offsetX.animateTo(0f, animationSpec = androidx.compose.animation.core.tween(300, easing = androidx.compose.animation.core.FastOutSlowInEasing))
-                        onDelete() // 动画播放完毕后，真正执行底层删除操作
+                        deleteScale = 0.8f
+                        kotlinx.coroutines.delay(80)
+                        deleteScale = 1f
+                        archiveOffsetX.animateTo(
+                            targetValue = -screenWidthPx * 1.2f,
+                            animationSpec = androidx.compose.animation.core.tween(
+                                durationMillis = 250,
+                                easing = androidx.compose.animation.core.FastOutLinearInEasing
+                            )
+                        )
+                        onDelete()
                     }
                 },
-                modifier = Modifier.size(48.dp).scale(animatedDeleteScale).background(Color(0xFFF44336), CircleShape)
-            ) { Icon(Icons.Default.Delete, "删除", tint = Color.White) }
+                // 【仅修改此行】：增加了 8.dp 的阴影
+                modifier = Modifier.size(48.dp).scale(animatedDeleteScale).shadow(elevation = 8.dp, shape = CircleShape).background(Color(0xFFF44336), CircleShape)
+            ) {
+                Icon(Icons.Default.Delete, "删除", tint = Color.White)
+            }
         }
 
-        // 顶层：笔记卡片，带滑动手势与阴影
+        // 顶层：笔记卡片，带滑动手势与阴影 (拖拽逻辑维持原状)
         Card(
             modifier = Modifier.fillMaxWidth().offset { IntOffset(offsetX.value.roundToInt(), 0) }
                 .pointerInput(Unit) {
                     detectHorizontalDragGestures(
                         onDragEnd = {
                             scope.launch {
-                                // 【修改点 3】悬停和归位动画：加入阻尼物理弹簧 (spring) 效果，让回弹和吸附充满 Q 弹质感
                                 if (offsetX.value < -buttonWidthPx / 2) {
                                     offsetX.animateTo(-buttonWidthPx, spring(dampingRatio = 0.65f, stiffness = 300f))
                                 } else {
@@ -173,18 +214,160 @@ fun SwipeHoverNoteCard(note: Note, showDate: Boolean, onClick: () -> Unit, onArc
                 }.clickable(onClick = onClick),
             shape = CircleShape,
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-            // 【修改点 4】增加 8.dp 阴影：使其拥有与悬浮底部导航栏完全一致的立体层次感！
             elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
         ) {
-            Row(modifier = Modifier.fillMaxWidth().fillMaxHeight().padding(vertical = 18.dp, horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically) {
+            // 【安全修复】：去掉了这里可能导致崩溃的 fillMaxHeight()
+            Row(modifier = Modifier.fillMaxWidth().padding(vertical = 18.dp, horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (showDate) Text(text = formatTime(note.createdAt), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f), modifier = Modifier.padding(end = 12.dp))
+
+                // ================== 完美九宫格逻辑注入点 ==================
                 if (note.imagePaths.isNotEmpty()) {
-                    Box(modifier = Modifier.fillMaxHeight().aspectRatio(1f).padding(end = 12.dp)) { AsyncImage(model = Uri.parse(note.imagePaths.first()), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(8.dp))) }
+                    // 一句代码直接呼叫我们写好的独立组件！右边距 12.dp 通过 modifier 传入
+                    NoteImageGrid(imagePaths = note.imagePaths, modifier = Modifier.padding(end = 12.dp))
                 }
+                // ================== 修改结束 ==================
+                // ================== 修改结束 ==================
+
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
                     Text(text = if (note.title.isNotBlank()) note.title else "无标题", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(text = if (note.content.isNotBlank()) note.content else "空内容", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        }
+    }
+}
+// ================== 独立的九宫格渲染组件 ==================
+@Composable
+fun NoteImageGrid(imagePaths: List<String>, modifier: Modifier = Modifier) {
+    val images = imagePaths.take(9)
+    val count = images.size
+    val spacing = 2.dp
+
+    // 最外层容器接收传入的 modifier (如 padding)
+    Box(modifier = modifier) {
+        // 内层容器固定 55.dp (完美遵循您的设定)
+        Box(
+            modifier = Modifier
+                .size(55.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+        ) {
+            when (count) {
+                1 -> {
+                    AsyncImage(model = Uri.parse(images[0]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                }
+                2 -> {
+                    Row(modifier = Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(spacing)) {
+                        AsyncImage(model = Uri.parse(images[0]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.weight(1f).fillMaxHeight())
+                        AsyncImage(model = Uri.parse(images[1]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.weight(1f).fillMaxHeight())
+                    }
+                }
+                3 -> {
+                    Row(modifier = Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(spacing)) {
+                        AsyncImage(model = Uri.parse(images[0]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.weight(1f).fillMaxHeight())
+                        Column(modifier = Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(spacing)) {
+                            AsyncImage(model = Uri.parse(images[1]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.weight(1f).fillMaxWidth())
+                            AsyncImage(model = Uri.parse(images[2]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.weight(1f).fillMaxWidth())
+                        }
+                    }
+                }
+                4 -> {
+                    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(spacing)) {
+                        Row(modifier = Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(spacing)) {
+                            AsyncImage(model = Uri.parse(images[0]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.weight(1f).fillMaxHeight())
+                            AsyncImage(model = Uri.parse(images[1]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.weight(1f).fillMaxHeight())
+                        }
+                        Row(modifier = Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(spacing)) {
+                            AsyncImage(model = Uri.parse(images[2]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.weight(1f).fillMaxHeight())
+                            AsyncImage(model = Uri.parse(images[3]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.weight(1f).fillMaxHeight())
+                        }
+                    }
+                }
+                5 -> {
+                    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(spacing)) {
+                        Row(modifier = Modifier.weight(2f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(spacing)) {
+                            AsyncImage(model = Uri.parse(images[0]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.weight(2f).fillMaxHeight())
+                            AsyncImage(model = Uri.parse(images[1]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.weight(1f).fillMaxHeight())
+                        }
+                        Row(modifier = Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(spacing)) {
+                            AsyncImage(model = Uri.parse(images[2]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.weight(1f).fillMaxHeight())
+                            AsyncImage(model = Uri.parse(images[3]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.weight(1f).fillMaxHeight())
+                            AsyncImage(model = Uri.parse(images[4]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.weight(1f).fillMaxHeight())
+                        }
+                    }
+                }
+                6 -> {
+                    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(spacing)) {
+                        Row(modifier = Modifier.weight(2f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(spacing)) {
+                            AsyncImage(model = Uri.parse(images[0]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.weight(2f).fillMaxHeight())
+                            Column(modifier = Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(spacing)) {
+                                AsyncImage(model = Uri.parse(images[1]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.weight(1f).fillMaxWidth())
+                                AsyncImage(model = Uri.parse(images[2]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.weight(1f).fillMaxWidth())
+                            }
+                        }
+                        Row(modifier = Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(spacing)) {
+                            AsyncImage(model = Uri.parse(images[3]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.weight(1f).fillMaxHeight())
+                            AsyncImage(model = Uri.parse(images[4]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.weight(1f).fillMaxHeight())
+                            AsyncImage(model = Uri.parse(images[5]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.weight(1f).fillMaxHeight())
+                        }
+                    }
+                }
+                7 -> {
+                    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(spacing)) {
+                        Row(modifier = Modifier.weight(2f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(spacing)) {
+                            AsyncImage(model = Uri.parse(images[0]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.weight(1f).fillMaxHeight())
+                            AsyncImage(model = Uri.parse(images[1]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.weight(1f).fillMaxHeight())
+                            Column(modifier = Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(spacing)) {
+                                AsyncImage(model = Uri.parse(images[2]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.weight(1f).fillMaxWidth())
+                                AsyncImage(model = Uri.parse(images[3]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.weight(1f).fillMaxWidth())
+                            }
+                        }
+                        Row(modifier = Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(spacing)) {
+                            AsyncImage(model = Uri.parse(images[4]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.weight(1f).fillMaxHeight())
+                            AsyncImage(model = Uri.parse(images[5]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.weight(1f).fillMaxHeight())
+                            AsyncImage(model = Uri.parse(images[6]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.weight(1f).fillMaxHeight())
+                        }
+                    }
+                }
+                8 -> {
+                    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(spacing)) {
+                        Row(modifier = Modifier.weight(2f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(spacing)) {
+                            AsyncImage(model = Uri.parse(images[0]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.weight(1f).fillMaxHeight())
+                            Column(modifier = Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(spacing)) {
+                                AsyncImage(model = Uri.parse(images[1]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.weight(1f).fillMaxWidth())
+                                AsyncImage(model = Uri.parse(images[2]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.weight(1f).fillMaxWidth())
+                            }
+                            Column(modifier = Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(spacing)) {
+                                AsyncImage(model = Uri.parse(images[3]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.weight(1f).fillMaxWidth())
+                                AsyncImage(model = Uri.parse(images[4]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.weight(1f).fillMaxWidth())
+                            }
+                        }
+                        Row(modifier = Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(spacing)) {
+                            AsyncImage(model = Uri.parse(images[5]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.weight(1f).fillMaxHeight())
+                            AsyncImage(model = Uri.parse(images[6]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.weight(1f).fillMaxHeight())
+                            AsyncImage(model = Uri.parse(images[7]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.weight(1f).fillMaxHeight())
+                        }
+                    }
+                }
+                else -> {
+                    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(spacing)) {
+                        Row(modifier = Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(spacing)) {
+                            AsyncImage(model = Uri.parse(images[0]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.weight(1f).fillMaxHeight())
+                            AsyncImage(model = Uri.parse(images[1]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.weight(1f).fillMaxHeight())
+                            AsyncImage(model = Uri.parse(images[2]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.weight(1f).fillMaxHeight())
+                        }
+                        Row(modifier = Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(spacing)) {
+                            AsyncImage(model = Uri.parse(images[3]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.weight(1f).fillMaxHeight())
+                            AsyncImage(model = Uri.parse(images[4]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.weight(1f).fillMaxHeight())
+                            AsyncImage(model = Uri.parse(images[5]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.weight(1f).fillMaxHeight())
+                        }
+                        Row(modifier = Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(spacing)) {
+                            AsyncImage(model = Uri.parse(images[6]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.weight(1f).fillMaxHeight())
+                            AsyncImage(model = Uri.parse(images[7]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.weight(1f).fillMaxHeight())
+                            AsyncImage(model = Uri.parse(images[8]), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.weight(1f).fillMaxHeight())
+                        }
+                    }
                 }
             }
         }
