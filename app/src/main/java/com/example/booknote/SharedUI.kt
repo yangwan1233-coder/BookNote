@@ -90,7 +90,9 @@ fun FloatingBottomBar(navController: NavHostController, currentRoute: String?, m
 
 @Composable
 fun YearHeader(year: String) {
-    Box(modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp), contentAlignment = Alignment.Center) {
+    // 💡 【核心修复】：删除了外层的 padding(vertical = 16.dp)
+    // 把外部间距的控制权，100% 交还给外层的 LazyColumn 和 items 探测逻辑！
+    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
         Surface(
             shape = CircleShape,
             color = MaterialTheme.colorScheme.surfaceVariant,
@@ -101,6 +103,7 @@ fun YearHeader(year: String) {
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                // ✅ 这个内部 padding 是维持椭圆气泡形状的，完美保留
                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
             )
         }
