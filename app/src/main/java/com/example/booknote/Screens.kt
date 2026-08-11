@@ -131,6 +131,8 @@ fun HomeScreen(notes: MutableList<Note>, showDate: Boolean, navController: NavHo
                                 // 重点在这里：top 控制距离上一张卡片的距离，bottom 控制距离下一张卡片的距离
                                 // 您可以随意把 bottom 改成 0.dp 或者 2.dp，让它死死贴住下面的笔记！
                                 .padding(top = 0.dp, bottom = 12.dp)
+                                // 🌟 动画注入 1：让日期标题也拥有丝滑的出入场视差动画
+                                .silkyScrollAnimation(listState = listState, itemKey = "header_$monthKey")
                         ) {
                             YearHeader(year = headerText)
                         }
@@ -153,6 +155,8 @@ fun HomeScreen(notes: MutableList<Note>, showDate: Boolean, navController: NavHo
                                 // 如果是当月最后一条笔记，收缩间距，只留 2.dp 给下个月的标题；
                                 // 如果是普通的中间笔记，依然保持 12.dp 的舒适阅读距离！
                                 .padding(bottom = if (isLastNoteInMonth) 12.dp else 12.dp)
+                                // 🌟 动画注入 2：让每一张笔记卡片拥有神级丝滑形变动画
+                                .silkyScrollAnimation(listState = listState, itemKey = "note_${note.id}")
                         ) {
                             SwipeHoverNoteCard(
                                 note = note,
@@ -212,6 +216,24 @@ fun EditNoteScreen(navController: NavHostController, noteId: String, notes: Muta
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
+    // 在编辑页面函数顶部获取颜色
+
+    val themeManager = remember { ThemeSettingsManager(context) }
+    val themeState by themeManager.themeStateFlow.collectAsState(initial = AppThemeState())
+    // 1. 判断当前是否处于深色模式
+    val isDarkTheme = when (themeState.themeMode) {
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK -> true
+        ThemeMode.SYSTEM -> androidx.compose.foundation.isSystemInDarkTheme()
+    }
+
+// 2. 🌟 【核心修复】：直接把存储的数字转成 Color 对象，去和 Color.Black 比较！
+    val parsedColor = Color(themeState.noteTextColorHex)
+    val customTextColor = if (isDarkTheme && parsedColor == Color.Black) {
+        Color.White // 深色模式下，如果是纯黑，就强制变纯白
+    } else {
+        parsedColor // 其他情况（选了红黄蓝等）保持用户选的颜色
+    } // 👈 动态转为 Compose Color
 // ==================================================================
 // 💡 【大厂级核心修复】：使用 remember 锁死 currentNote 的生命周期锚点！
 // 无论页面因为用户操作或键盘弹起刷新多少次，在当前屏幕生存期间，我们只认定第一帧生成的笔记。
@@ -370,15 +392,16 @@ fun EditNoteScreen(navController: NavHostController, noteId: String, notes: Muta
                 )
             }
 
-            // 【只修改了这里】：增加了 focusRequester 和 回车键变为 Next 的逻辑
+            // 【只修改了 textStyle 中的 color】：改用 customTextColor（即 Color(themeState.noteTextColorHex)）
             TextField(
                 value = title,
                 onValueChange = { if (it.length <= 100) title = it },
+
                 placeholder = { Text("输入标题", fontSize = 28.sp, fontWeight = FontWeight.Bold) },
                 textStyle = androidx.compose.ui.text.TextStyle(
                     fontSize = 28.sp,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = customTextColor // 🌟 关键修改：替换 MaterialTheme.colorScheme.onSurface 为自定义字体颜色
                 ),
                 colors = TextFieldDefaults.colors(
                     focusedContainerColor = Color.Transparent,
@@ -424,7 +447,7 @@ fun EditNoteScreen(navController: NavHostController, noteId: String, notes: Muta
                             textStyle = androidx.compose.ui.text.TextStyle(
                                 fontSize = 16.sp,
                                 lineHeight = 24.sp,
-                                color = MaterialTheme.colorScheme.onSurface
+                                color = customTextColor // 🌟 关键修改：应用自定义笔记字体颜色
                             ),
                             colors = TextFieldDefaults.colors(
                                 focusedContainerColor = Color.Transparent,
@@ -524,8 +547,16 @@ fun EditNoteScreen(navController: NavHostController, noteId: String, notes: Muta
         Column(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
             if (showDates) {
                 Column(modifier = Modifier.fillMaxWidth().padding(end = 16.dp, bottom = 12.dp), horizontalAlignment = Alignment.End) {
-                    Text(text = "创建: ${formatTime(currentNote.createdAt, "yyyy-MM-dd HH:mm")}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
-                    Text(text = "编辑: ${formatTime(System.currentTimeMillis(), "yyyy-MM-dd HH:mm")}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
+                    Text(
+                        text = "创建: ${formatTime(currentNote.createdAt, "yyyy-MM-dd HH:mm")}",
+                        fontSize = 12.sp,
+                        color = customTextColor.copy(alpha = 0.8f) // 🌟 关键修改：替换为自定义笔记字体颜色
+                    )
+                    Text(
+                        text = "编辑: ${formatTime(System.currentTimeMillis(), "yyyy-MM-dd HH:mm")}",
+                        fontSize = 12.sp,
+                        color = customTextColor.copy(alpha = 0.8f) // 🌟 关键修改：替换为自定义笔记字体颜色
+                    )
                 }
             }
             Box(

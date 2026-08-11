@@ -8,20 +8,30 @@ import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import android.widget.Toast
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -36,7 +46,8 @@ import androidx.navigation.NavHostController
 @Composable
 fun MoreSettingsScreen(navController: NavHostController) {
     val context = LocalContext.current
-
+    val themeManager = remember { ThemeSettingsManager(context) }
+    val themeState by themeManager.themeStateFlow.collectAsState(initial = AppThemeState())
     // 【高级状态锁】：用于管控当系统静默拦截添加时，弹出的“去手动开启权限”的引导对话框
     var showPermissionDialog by remember { mutableStateOf(false) }
 
@@ -44,65 +55,173 @@ fun MoreSettingsScreen(navController: NavHostController) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .systemBarsPadding()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.statusBarsPadding().height(16.dp))
 
             // ================= 1. 顶部标题 =================
             Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer, shadowElevation = 8.dp) {
                 Text(text = "更多设置", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 32.dp, vertical = 12.dp))
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-            // ================= 2. 桌面待办部件 (2x2) 预览与添加 =================
-            Text(text = "点击下方部件将其添加至桌面", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
-            Spacer(modifier = Modifier.height(8.dp)) // 强制缩小间距
+            // ================= 2. 桌面待办部件 (2x2) 折叠卡片 =================
+            var isWidgetPreviewExpanded by remember { mutableStateOf(false) }
+            val widgetArrowRotation by animateFloatAsState(
+                targetValue = if (isWidgetPreviewExpanded) 180f else 0f,
+                label = "WidgetArrowRotation"
+            )
 
-            // 移除 weight(1f)，让 Box 紧贴文字，不由于权重而撑开
-            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                val scaleRatio = 0.8f // 预览比例
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(28.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
+                )
+            ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    // 可点击的头部标题栏（标题居中 + 旋转箭头）
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { isWidgetPreviewExpanded = !isWidgetPreviewExpanded }
+                            .padding(horizontal = 20.dp, vertical = 18.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Spacer(modifier = Modifier.size(24.dp)) // 占位保持标题居中
 
-                Surface(
-                    modifier = Modifier
-                        .graphicsLayer { scaleX = scaleRatio; scaleY = scaleRatio }
-                        .requiredSize(430.dp)
-                        .clip(RoundedCornerShape(73.dp))
-                        .clickable {
-                            // 执行具备权限穿透的高级小部件请求函数
-                            val needManualPermission = requestPinTodoShortcut(context)
-                            if (needManualPermission) {
-                                showPermissionDialog = true // 激活去开启权限的引导弹窗
-                            }
-                        },
-                    color = MaterialTheme.colorScheme.secondaryContainer,
-                    shadowElevation = 16.dp
-                ) {
-                    Column(modifier = Modifier.fillMaxSize()) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().height(73.dp).background(Color(0xFFFFD54F)),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Spacer(modifier = Modifier.width(73.dp))
-                            Text(text = "待办事项", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Color.Black, modifier = Modifier.weight(1f), textAlign = TextAlign.Left)
-                            Box(modifier = Modifier.size(73.dp).clip(CircleShape), contentAlignment = Alignment.Center) {
-                                Icon(imageVector = Icons.Default.Add, contentDescription = "新建", tint = Color.Black, modifier = Modifier.size(36.dp))
-                            }
-                        }
+                        Text(
+                            text = "🧩 添加桌面小部件",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.weight(1f)
+                        )
 
+                        Icon(
+                            imageVector = Icons.Default.ExpandMore,
+                            contentDescription = "展开或收起",
+                            modifier = Modifier
+                                .size(24.dp)
+                                .rotate(widgetArrowRotation),
+                            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                        )
+                    }
+
+                    // 折叠/展开动画预览内容
+                    AnimatedVisibility(
+                        visible = isWidgetPreviewExpanded,
+                        enter = expandVertically() + fadeIn(),
+                        exit = shrinkVertically() + fadeOut()
+                    ) {
                         Column(
-                            modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant).padding(horizontal = 32.dp, vertical = 24.dp),
-                            verticalArrangement = Arrangement.SpaceEvenly
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 16.dp, end = 16.dp, bottom = 18.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            MockTodoItem("1. 提醒：请先设置权限")
-                            MockTodoItem("2. 允许添加桌面快捷方式")
-                            MockTodoItem("3. 然后完成两条待办测试")
+                            Divider(
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+                                thickness = 1.dp,
+                                modifier = Modifier.padding(bottom = 12.dp)
+                            )
+
+                            Text(
+                                text = "点击下方部件将其添加至桌面",
+                                fontSize = 14.sp,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                            )
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                val scaleRatio = 0.8f
+
+                                Surface(
+                                    modifier = Modifier
+                                        .graphicsLayer { scaleX = scaleRatio; scaleY = scaleRatio }
+                                        .requiredSize(430.dp)
+                                        .clip(RoundedCornerShape(73.dp))
+                                        .clickable {
+                                            val needManualPermission = requestPinTodoShortcut(context)
+                                            if (needManualPermission) {
+                                                showPermissionDialog = true
+                                            }
+                                        },
+                                    color = MaterialTheme.colorScheme.secondaryContainer,
+                                    shadowElevation = 16.dp
+                                ) {
+                                    Column(modifier = Modifier.fillMaxSize()) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(73.dp)
+                                                .background(Color(0xFFFFD54F)),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Spacer(modifier = Modifier.width(73.dp))
+                                            Text(
+                                                text = "待办事项",
+                                                fontSize = 26.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color.Black,
+                                                modifier = Modifier.weight(1f),
+                                                textAlign = TextAlign.Left
+                                            )
+                                            Box(
+                                                modifier = Modifier.size(73.dp).clip(CircleShape),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Add,
+                                                    contentDescription = "新建",
+                                                    tint = Color.Black,
+                                                    modifier = Modifier.size(36.dp)
+                                                )
+                                            }
+                                        }
+
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .background(MaterialTheme.colorScheme.surfaceVariant)
+                                                .padding(horizontal = 32.dp, vertical = 24.dp),
+                                            verticalArrangement = Arrangement.SpaceEvenly
+                                        ) {
+                                            MockTodoItem("1. 提醒：请先设置权限")
+                                            MockTodoItem("2. 允许添加桌面快捷方式")
+                                            MockTodoItem("3. 然后完成两条待办测试")
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
             }
+
+            // =================================================================
+            // 🌟 3. 新增：全局主题与背景设置模块 (大厂代码无缝接入)
+            // =================================================================
+            Spacer(modifier = Modifier.height(16.dp)) // 留出舒适的间隔
+
+            // 初始化背景设置管家（这里默认您这个函数的最上方已经写过 val context = LocalContext.current 了）
+            val themeManager = remember { ThemeSettingsManager(context) }
+            val themeState by themeManager.themeStateFlow.collectAsState(initial = AppThemeState())
+
+            // 呼出您刚创建的那两个竖向排布的设置卡片
+            MoreSettingsThemeOptions(
+                themeState = themeState,
+                themeManager = themeManager
+            )
+
+            Spacer(modifier = Modifier.navigationBarsPadding().height(80.dp))
         }
 
         // ================= 3. 底部返回按钮 (对标主页底部导航栏样式) =================

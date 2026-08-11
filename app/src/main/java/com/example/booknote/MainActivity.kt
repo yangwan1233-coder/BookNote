@@ -27,16 +27,55 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
-    // 【修复规范 1】：更名并规范化使用，防止隐性内存泄漏
+    // 【修复规范 1】：更名并规范化使用，防止隐性内存泄漏（保留原逻辑）
     private var globalNavController: NavHostController? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
         setContent {
-            BookNoteTheme {
+            // 🌟 【新增：大厂级主题与背景管理器初始化】
+            val context = LocalContext.current
+            val themeManager = remember { ThemeSettingsManager(context) }
+            val themeState by themeManager.themeStateFlow.collectAsState(initial = AppThemeState())
+
+            // 🌟 【新增：状态栏反色逻辑实质生效控制】
+            val view = androidx.compose.ui.platform.LocalView.current
+            if (!view.isInEditMode) {
+                androidx.compose.runtime.SideEffect {
+                    val window = (view.context as? android.app.Activity)?.window
+                    if (window != null) {
+                        val insetsController = androidx.core.view.WindowCompat.getInsetsController(window, view)
+
+                        // 1. 判断系统/当前是否为深色模式
+                        val defaultSystemDark = when (themeState.themeMode) {
+                            ThemeMode.LIGHT -> false
+                            ThemeMode.DARK -> true
+                            ThemeMode.SYSTEM -> view.context.resources.configuration.uiMode and
+                                    android.content.res.Configuration.UI_MODE_NIGHT_MASK == android.content.res.Configuration.UI_MODE_NIGHT_YES
+                        }
+
+                        // 2. 计算默认图标模式：深色背景用白字(false)，浅色背景用黑字(true)
+                        val defaultLightStatusBars = !defaultSystemDark
+
+                        // 3. 应用“反色”控制：开启反色时取反，关闭时保持默认
+                        insetsController.isAppearanceLightStatusBars = if (themeState.isStatusBarIconInverted) {
+                            !defaultLightStatusBars
+                        } else {
+                            defaultLightStatusBars
+                        }
+                    }
+                }
+            }
+
+            // 🌟 【新增：用 AppBackgroundContainer 包裹整个应用】
+            // 内部已自动包含 BookNoteTheme(darkTheme = isDark)，且支持全局纯色/自定义背景图片
+            AppBackgroundContainer(themeState = themeState) {
                 val navController = rememberNavController()
                 globalNavController = navController
+
+                // 您的应用主入口（原封不动）
                 BookNoteApp(navController)
             }
         }
@@ -45,7 +84,7 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent?) {
         super.onNewIntent(intent)
         setIntent(intent)
-        // 【修复规范 2】：更安全、符合 Kotlin 习惯的空安全跳转调用
+        // 【修复规范 2】：更安全、符合 Kotlin 习惯的空安全跳转调用（保留原逻辑）
         intent?.getStringExtra("shortcut_target")?.let { target ->
             try {
                 globalNavController?.navigate(target) {
@@ -59,7 +98,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        // 【修复规范 3】：Activity 销毁时切断引用，彻底杜绝内存泄漏
+        // 【修复规范 3】：Activity 销毁时切断引用，彻底杜绝内存泄漏（保留原逻辑）
         globalNavController = null
     }
 }

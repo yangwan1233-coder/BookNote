@@ -232,16 +232,19 @@ fun SettingsScreen(notes: MutableList<Note>, showDate: Boolean, navController: N
         }
     }
 
-    Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        containerColor = Color.Transparent
+    ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding) // 【优化边界规避】：彻底抛弃低级且易崩溃的 WindowInsets.statusBars 手工运算
-                .padding(horizontal = 24.dp)
-                .verticalScroll(scrollState),
+                .verticalScroll(scrollState)
+                .padding(horizontal = 24.dp), // 👈 仅保留左右边距，使滚动视口延伸至全屏
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(modifier = Modifier.height(16.dp))
+            // 🌟 1. 顶部状态栏安全占位：初始不被遮挡，上滑时内容可直接穿透状态栏
+            Spacer(modifier = Modifier.height(innerPadding.calculateTopPadding() + 16.dp))
 
             Surface(
                 shape = CircleShape,

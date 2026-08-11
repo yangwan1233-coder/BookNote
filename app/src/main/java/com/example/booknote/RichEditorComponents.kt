@@ -27,7 +27,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.platform.LocalContext
 
 sealed class UIBlock { val blockId: String = UUID.randomUUID().toString() }
 data class UITextBlock(var content: TextFieldValue = TextFieldValue("")) : UIBlock()
@@ -65,13 +65,28 @@ fun InteractiveTableBlock(
     onDelete: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // 🌟 1. 读取全局设置的自定义笔记字体颜色
+    val context = LocalContext.current
+    val themeManager = remember { ThemeSettingsManager(context) }
+    val themeState by themeManager.themeStateFlow.collectAsState(initial = AppThemeState())
+    // 1. 判断当前是否处于深色模式
+    val isDarkTheme = when (themeState.themeMode) {
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK -> true
+        ThemeMode.SYSTEM -> androidx.compose.foundation.isSystemInDarkTheme()
+    }
+
+// 2. 🌟 【核心修复】：直接把存储的数字转成 Color 对象，去和 Color.Black 比较！
+    val parsedColor = Color(themeState.noteTextColorHex)
+    val customTextColor = if (isDarkTheme && parsedColor == Color.Black) {
+        Color.White // 深色模式下，如果是纯黑，就强制变纯白
+    } else {
+        parsedColor // 其他情况（选了红黄蓝等）保持用户选的颜色
+    }
+
     var showMenu by remember { mutableStateOf(false) }
 
-    // ==================================================================
     // 【大厂级流式重构】：引入标准化栅格宽度 (130.dp)
-    // 彻底废除老旧的“每加一个字就动态加宽”的凌乱逻辑。
-    // 字数超长时文字会自动优雅换行，并驱动整行高度自适应，保证完美的网格秩序。
-    // ==================================================================
     val defaultColumnWidth = 130.dp
 
     Column(
@@ -99,7 +114,7 @@ fun InteractiveTableBlock(
                 if (newValue.text != tableData.title) onUpdate(tableData.copy(title = newValue.text))
             },
             textStyle = androidx.compose.ui.text.TextStyle(
-                color = MaterialTheme.colorScheme.primary,
+                color = customTextColor, // 🌟 2. 修改表格标题字体颜色
                 fontSize = 15.sp,
                 fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
                 textAlign = TextAlign.Center
@@ -107,7 +122,7 @@ fun InteractiveTableBlock(
             decorationBox = { innerTextField ->
                 Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
                     if (titleState.text.isEmpty()) {
-                        Text("（ 添加标题 ）", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f), fontSize = 15.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                        Text("（ 添加标题 ）", color = customTextColor.copy(alpha = 0.5f), fontSize = 15.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
                     }
                     innerTextField()
                 }
@@ -120,7 +135,11 @@ fun InteractiveTableBlock(
                 onClick = { showMenu = true },
                 modifier = Modifier.height(24.dp).width(48.dp)
             ) {
-                Icon(androidx.compose.material.icons.Icons.Default.DragHandle, contentDescription = "表格选项", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Icon(
+                    imageVector = androidx.compose.material.icons.Icons.Default.DragHandle,
+                    contentDescription = "表格选项",
+                    tint = customTextColor // 🌟 3. 修改小横线手柄颜色
+                )
             }
 
             MaterialTheme(shapes = MaterialTheme.shapes.copy(extraSmall = RoundedCornerShape(12.dp))) {
@@ -157,45 +176,26 @@ fun InteractiveTableBlock(
 
         Box(
             modifier = Modifier
-                // 💡 【核心修复】：将 fillMaxWidth() 替换为 wrapContentWidth()！
-                // 这样外层盒子就会根据里面 2x2 表格的真实大小来收缩。
-                // 右边多余的空大框瞬间消失，彻底解决幽灵格子！
                 .wrapContentWidth()
                 .horizontalScroll(rememberScrollState())
                 .clip(RoundedCornerShape(8.dp))
                 .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp))
         ){
-            // ==================================================================
-// ==================================================================
-
             Column(modifier = Modifier.wrapContentWidth()) {
                 tableData.cells.forEachIndexed { r, row ->
-
-                    // 💡 【严格执行您的思路 1】：拦截幽灵空行！
-                    // 只允许 r 小于当前设定行数 (rows) 的数据显示，多余的空行直接不予渲染！
                     if (r < tableData.rows) {
-
                         Row(
                             modifier = Modifier
                                 .wrapContentWidth()
-                                .height(IntrinsicSize.Max) // 强力约束：单格换行撑高，整行同步长高
+                                .height(IntrinsicSize.Max)
                         ) {
                             row.forEachIndexed { c, cellText ->
-
-                                // 💡 【严格执行您的思路 2】：拦截右侧的幽灵空格！
-                                // 只渲染 2x2 范围内的列，右边多出来的空表格直接隐藏。
-                                // 当您点击“添加一列”时，tableData.cols 变成 3，它又会自动放行显示 3 列，完美兼容！
                                 if (c < tableData.cols) {
-
                                     Box(
                                         modifier = Modifier
-                                            .width(defaultColumnWidth) // 严格保留您的列宽，绝不修改！
+                                            .width(defaultColumnWidth)
                                             .fillMaxHeight()
                                             .border(0.5.dp, MaterialTheme.colorScheme.outlineVariant)
-                                            // ==================================================================
-                                            // 【核心修复】：固定黄金比例内边距 (左右 12dp 确保透气，上下 10dp 彰显紧凑)
-                                            // 彻底隔离文字长度对间距填充的影响，UI 观感极其稳定高级
-                                            // ==================================================================
                                             .padding(horizontal = 12.dp, vertical = 10.dp),
                                         contentAlignment = Alignment.Center
                                     ) {
@@ -224,11 +224,10 @@ fun InteractiveTableBlock(
                                                 }
                                             },
                                             textStyle = androidx.compose.ui.text.TextStyle(
-                                                color = MaterialTheme.colorScheme.onSurface,
+                                                color = customTextColor, // 🌟 4. 修改表格单元格内容字体颜色
                                                 fontSize = 14.sp,
-                                                textAlign = TextAlign.Center // 居中排布
+                                                textAlign = TextAlign.Center
                                             )
-                                            // 去掉了刚才那版画蛇添足的 modifier，原汁原味保留您的输入框样式
                                         )
                                     }
                                 }
@@ -253,6 +252,26 @@ fun InteractiveMindMapBlock(
     onDeleteMap: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // 🌟 1. 声明上下文与主题状态（读取自定义笔记字体颜色）
+    val context = LocalContext.current
+    val themeManager = remember { ThemeSettingsManager(context) }
+    val themeState by themeManager.themeStateFlow.collectAsState(initial = AppThemeState())
+    // 1. 判断当前是否处于深色模式
+    val isDarkTheme = when (themeState.themeMode) {
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK -> true
+        ThemeMode.SYSTEM -> androidx.compose.foundation.isSystemInDarkTheme()
+    }
+
+// 2. 🌟 【核心修复】：直接把存储的数字转成 Color 对象，去和 Color.Black 比较！
+    val parsedColor = Color(themeState.noteTextColorHex)
+    val customTextColor = if (isDarkTheme && parsedColor == Color.Black) {
+        Color.White // 深色模式下，如果是纯黑，就强制变纯白
+    } else {
+        parsedColor // 其他情况（选了红黄蓝等）保持用户选的颜色
+    }
+
+    // 🌟 2. 声明菜单显示控制状态
     var showMapMenu by remember { mutableStateOf(false) }
 
     // 升级为 Column 布局，以便将标题输入框渲染在图表正上方
@@ -260,6 +279,26 @@ fun InteractiveMindMapBlock(
         modifier = modifier.fillMaxWidth().padding(vertical = 12.dp),
         horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
     ) {
+        // 🌟 1. 读取全局设置的自定义笔记字体颜色
+        val context = androidx.compose.ui.platform.LocalContext.current
+        val themeManager = remember { ThemeSettingsManager(context) }
+        val themeState by themeManager.themeStateFlow.collectAsState(initial = AppThemeState())
+        // 1. 判断是否处于深色模式
+        val isDarkTheme = when (themeState.themeMode) {
+            ThemeMode.LIGHT -> false
+            ThemeMode.DARK -> true
+            ThemeMode.SYSTEM -> androidx.compose.foundation.isSystemInDarkTheme()
+        }
+
+// 2. 🌟 核心修复：必须加 .toInt()，并判断如果深色模式下是纯黑，就强制转为纯白
+        val parsedColor = androidx.compose.ui.graphics.Color(themeState.noteTextColorHex.toInt())
+
+        val customTextColor = if (isDarkTheme && parsedColor == androidx.compose.ui.graphics.Color.Black) {
+            androidx.compose.ui.graphics.Color.White
+        } else {
+            parsedColor
+        }
+
         // ==================================================================
         // 💡 【大厂级状态隔离】：彻底移除动态键，防止中文拼音输入中途被强杀
         // ==================================================================
@@ -299,7 +338,7 @@ fun InteractiveMindMapBlock(
                 }
             },
             textStyle = androidx.compose.ui.text.TextStyle(
-                color = androidx.compose.material3.MaterialTheme.colorScheme.primary,
+                color = customTextColor, // 🌟 2. 将思维导图标题修改为自定义笔记字体颜色
                 fontSize = 15.sp,
                 fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -313,7 +352,7 @@ fun InteractiveMindMapBlock(
                     if (titleState.text.isEmpty()) {
                         androidx.compose.material3.Text(
                             text = "（ 添加标题 ）",
-                            color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                            color = customTextColor.copy(alpha = 0.5f), // 🌟 3. 占位符也同步应用自定义颜色
                             fontSize = 15.sp,
                             fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
                         )
@@ -322,6 +361,7 @@ fun InteractiveMindMapBlock(
                 }
             }
         )
+    }
 
         // ==========================================
         // 下面紧接着保留您的思维导图 Canvas 画布渲染代码
@@ -368,7 +408,7 @@ fun InteractiveMindMapBlock(
             }
         }
     }
-}
+
 
 
 
