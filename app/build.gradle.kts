@@ -12,8 +12,8 @@ android {
         applicationId = "com.example.booknote"
         minSdk = 31 // 👈 【核心修改】门槛：最低只允许 Android 12 及以上的手机安装！抛弃老旧历史包袱。
         targetSdk = 36 // 靶心：以 Android 16 为绝对优先的最高标准进行底层性能与 UI 优化！
-        versionCode = 19
-        versionName = "2.8.13"
+        versionCode = 20
+        versionName = "2.8.14"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -59,7 +59,7 @@ dependencies {
     implementation("androidx.glance:glance-appwidget:1.1.1")
     implementation("androidx.glance:glance-material3:1.1.1")
     implementation("androidx.datastore:datastore-preferences:1.0.0")
-
+    implementation("io.coil-kt:coil-compose:2.5.0")
     // WorkManager
     implementation("androidx.work:work-runtime-ktx:2.9.0")
 

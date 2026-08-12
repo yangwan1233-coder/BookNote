@@ -35,7 +35,35 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
+import android.content.Context
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.FileOutputStream
 
+// 将相册的临时图片复制到 App 的私有目录，实现永久保存
+suspend fun saveImageToInternalStorage(context: Context, uri: Uri): String? {
+    return withContext(Dispatchers.IO) {
+        try {
+            val inputStream = context.contentResolver.openInputStream(uri) ?: return@withContext null
+            // 在应用的私有 files 目录下创建一个名为 bg_image.jpg 的文件
+            val file = File(context.filesDir, "bg_image.jpg")
+            val outputStream = FileOutputStream(file)
+
+            inputStream.copyTo(outputStream)
+
+            inputStream.close()
+            outputStream.close()
+
+            // 返回我们自己私有目录下的绝对路径
+            file.absolutePath
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+}
 @Composable
 fun MoreSettingsThemeOptions(
     themeState: AppThemeState,
@@ -59,12 +87,23 @@ fun MoreSettingsThemeOptions(
     )
 
     // 相册选择器
+    val context = LocalContext.current // 获取上下文
+
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri: Uri? ->
-        uri?.let {
+        uri?.let { tempUri ->
             scope.launch {
-                themeManager.updateBackgroundImage(it.toString())
+                // 1. 将临时图片复制到永久私有目录
+                val localPath = saveImageToInternalStorage(context, tempUri)
+
+                if (localPath != null) {
+                    // 2. 更新为图片背景模式
+                    themeManager.updateBackgroundType(BackgroundType.IMAGE)
+                    // 3. 把存下来的本地绝对路径(localPath)保存到 DataStore/SharedPreferences
+                    // 这里假设你有一个 updateBackgroundImage 的方法
+                    themeManager.updateBackgroundImage(localPath)
+                }
             }
         }
     }

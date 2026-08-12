@@ -25,6 +25,17 @@ import com.example.booknote.ui.theme.BookNoteTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import android.content.res.Configuration
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
 
 class MainActivity : ComponentActivity() {
     // 【修复规范 1】：更名并规范化使用，防止隐性内存泄漏（保留原逻辑）
@@ -41,19 +52,19 @@ class MainActivity : ComponentActivity() {
             val themeState by themeManager.themeStateFlow.collectAsState(initial = AppThemeState())
 
             // 🌟 【新增：状态栏反色逻辑实质生效控制】
-            val view = androidx.compose.ui.platform.LocalView.current
+            val view = LocalView.current
             if (!view.isInEditMode) {
-                androidx.compose.runtime.SideEffect {
+                SideEffect {
                     val window = (view.context as? android.app.Activity)?.window
                     if (window != null) {
-                        val insetsController = androidx.core.view.WindowCompat.getInsetsController(window, view)
+                        val insetsController = WindowCompat.getInsetsController(window, view)
 
                         // 1. 判断系统/当前是否为深色模式
                         val defaultSystemDark = when (themeState.themeMode) {
                             ThemeMode.LIGHT -> false
                             ThemeMode.DARK -> true
                             ThemeMode.SYSTEM -> view.context.resources.configuration.uiMode and
-                                    android.content.res.Configuration.UI_MODE_NIGHT_MASK == android.content.res.Configuration.UI_MODE_NIGHT_YES
+                                    Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
                         }
 
                         // 2. 计算默认图标模式：深色背景用白字(false)，浅色背景用黑字(true)
@@ -73,7 +84,14 @@ class MainActivity : ComponentActivity() {
             // 内部已自动包含 BookNoteTheme(darkTheme = isDark)，且支持全局纯色/自定义背景图片
             AppBackgroundContainer(themeState = themeState) {
                 val navController = rememberNavController()
-                globalNavController = navController
+
+                // 【规范优化】：使用 DisposableEffect 在重组生命周期内安全绑定控制器，防止重组副作用
+                DisposableEffect(navController) {
+                    globalNavController = navController
+                    onDispose {
+                        globalNavController = null
+                    }
+                }
 
                 // 您的应用主入口（原封不动）
                 BookNoteApp(navController)
@@ -134,7 +152,7 @@ fun BookNoteApp(navController: NavHostController) {
 
             // 💡 升级控制中心：当前指南版本更新为 4！
             // 以后只要您修改了下方的指南内容，只需将此处的数字 +1，全量机器就会自动强制更新！
-            val currentGuideVersion = 8
+            val currentGuideVersion = 9
 
             val finalNotes = mutableListOf<Note>()
             val currentTime = System.currentTimeMillis()
@@ -159,6 +177,8 @@ fun BookNoteApp(navController: NavHostController) {
                 val introText = """
                 欢迎使用 BookNote 智能备忘录！
                 （不记录来时路，何谈不负当下？）
+                
+                最新更新内容：全局自定义背景和笔记字体颜色，笔记预览卡片滑动动画。
                 
                 本应用已全面升级为大厂级“流式图文排版架构”。在这里，文字、表格与思维导图不再是孤立的组件，而是可以随心所欲自由混排的生命体！
                 
