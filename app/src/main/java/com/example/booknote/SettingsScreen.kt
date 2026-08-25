@@ -43,7 +43,7 @@ import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(notes: MutableList<Note>, showDate: Boolean, navController: NavHostController, onShowDateChange: (Boolean) -> Unit) {
+fun SettingsScreen(notes: List<Note>, showDate: Boolean, navController: NavHostController, noteViewModel: NoteViewModel, onShowDateChange: (Boolean) -> Unit) {
     val context = LocalContext.current
     val sharedPref = remember { context.getSharedPreferences("booknote_prefs", Context.MODE_PRIVATE) }
     val scope = rememberCoroutineScope()
@@ -68,26 +68,27 @@ fun SettingsScreen(notes: MutableList<Note>, showDate: Boolean, navController: N
             showBackupProgress || showRestoreProgress -> { /* 拦截返回键，强制等待进度完成 */ }
             expandTheme -> expandTheme = false
             expandBackup -> expandBackup = false
-            else -> navController.navigate("home") { launchSingleTop = true }
+            else -> {
+                // 🌟 修复：真正的“返回”操作，直接把当前设置页从栈里弹出去
+                navController.popBackStack()
+            }
         }
     }
 
-    // 【极客修复1：完美安全迁移，绝不乱删核心文件】
     val storageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) {
-            // 父协程统一跑在主线程，控制 UI 状态更安全
             scope.launch {
                 isProcessing = true
                 try {
                     val takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
                     context.contentResolver.takePersistableUriPermission(uri, takeFlags)
 
-                    // 切换到 IO 线程进行高强度文件读写
                     withContext(Dispatchers.IO) {
                         val destDir = DocumentFile.fromTreeUri(context, uri)
-                        val imagesDir = destDir?.createDirectory("images") ?: destDir
+                        // 🌟 规范修复1：如果 images 文件夹已存在，createDirectory 会返回 null 导致直接保存在根目录，用 findFile 做安全兜底
+                        val imagesDir = destDir?.findFile("images") ?: destDir?.createDirectory("images") ?: destDir
 
-                        val filesToDelete = mutableListOf<File>() // 【安全锁】：用于精确记录已成功迁移的废弃图片
+                        val filesToDelete = mutableListOf<File>()
 
                         val updatedNotes = notes.map { note ->
                             val newImagePaths = note.imagePaths.map { path ->
@@ -99,7 +100,7 @@ fun SettingsScreen(notes: MutableList<Note>, showDate: Boolean, navController: N
                                             context.contentResolver.openOutputStream(newFile.uri)?.use { outStream ->
                                                 file.inputStream().use { inStream -> inStream.copyTo(outStream) }
                                             }
-                                            filesToDelete.add(file) // 只有真正拷贝成功了，才加入待删除名单
+                                            filesToDelete.add(file)
                                             newFile.uri.toString()
                                         } else path
                                     } else path
@@ -108,47 +109,39 @@ fun SettingsScreen(notes: MutableList<Note>, showDate: Boolean, navController: N
                             note.copy(imagePaths = newImagePaths)
                         }
 
-                        // 同步到 UI 数据源（切回主线程）
                         withContext(Dispatchers.Main) {
-                            notes.clear()
-                            notes.addAll(updatedNotes)
+                            noteViewModel.updateNotesList(updatedNotes)
+                            sharedPref.edit().putString("storage_uri", uri.toString()).apply()
                         }
 
-                        sharedPref.edit().putString("storage_uri", uri.toString()).apply()
-                        saveNotesToDisk(context, notes.toList())
-
-                        // 【精确击杀】：安全删除已被成功转移的沙盒图片，绝不破坏 App 其余数据
                         filesToDelete.forEach { it.delete() }
                     }
                     Toast.makeText(context, "存储路径已迁移！沙盒空间已彻底释放", Toast.LENGTH_SHORT).show()
                 } catch (e: Exception) {
                     Toast.makeText(context, "迁移失败：${e.localizedMessage}", Toast.LENGTH_LONG).show()
                 } finally {
-                    isProcessing = false // finally 确保加载动画 100% 被关闭
+                    isProcessing = false
                 }
             }
         }
     }
 
-    // 【极客修复2：安全备份与严格的 UI 状态流转】
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
         if (uri != null) {
             scope.launch {
                 showBackupProgress = true
                 expandBackup = false
                 try {
-                    // IO 计算结果返回给主线程
                     val (success, sizeText) = withContext(Dispatchers.IO) {
-                        val isSuccess = backupDataToZip(context, uri, notes.toList())
+                        // 🌟 规范修复2：去除多余的 toList()，因为 notes 已经是不可变 List
+                        val isSuccess = backupDataToZip(context, uri, notes)
                         var text = ""
                         if (isSuccess) {
-                            var sizeBytes = 0L
-                            context.contentResolver.openFileDescriptor(uri, "r")?.use { fd ->
-                                sizeBytes = fd.statSize
-                            }
+                            // 🌟 规范修复3：废弃 openFileDescriptor 获取大小的危险做法，改用标准且不会闪退的 DocumentFile API 获取尺寸
+                            val sizeBytes = DocumentFile.fromSingleUri(context, uri)?.length() ?: 0L
                             val sizeMb = sizeBytes / (1024 * 1024)
                             val sizeKb = sizeBytes / 1024
-                            text = if (sizeMb > 0) "${sizeMb}mb" else "${sizeKb}kb"
+                            text = if (sizeMb > 0) "${sizeMb}MB" else "${sizeKb}KB"
                         }
                         isSuccess to text
                     }
@@ -162,13 +155,12 @@ fun SettingsScreen(notes: MutableList<Note>, showDate: Boolean, navController: N
                 } catch (e: Exception) {
                     Toast.makeText(context, "备份出错：${e.message}", Toast.LENGTH_SHORT).show()
                 } finally {
-                    showBackupProgress = false // 绝对安全地解除屏幕锁死
+                    showBackupProgress = false
                 }
             }
         }
     }
 
-    // 【极客修复3：确保时间戳和图片的高精度覆盖与 UI 及时刷新】
     val restoreLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             scope.launch {
@@ -177,23 +169,20 @@ fun SettingsScreen(notes: MutableList<Note>, showDate: Boolean, navController: N
                 try {
                     val restoredNotes = withContext(Dispatchers.IO) { restoreDataFromZip(context, uri) }
 
-                    if (restoredNotes != null && (restoredNotes as Collection<Note>).isNotEmpty()) {
+                    // 🌟 规范修复4：去除了 (restoredNotes as Collection<Note>).isNotEmpty() 这种危险的强转写法
+                    if (!restoredNotes.isNullOrEmpty()) {
                         val backupMap = restoredNotes.associateBy { it.id }
                         val existingIds = notes.map { it.id }.toSet()
 
-                        // 生成一个全新的更新列表，这能确保 Compose 的 UI 重组机制被 100% 触发
                         val updatedList = notes.map { currentNote ->
-                            backupMap[currentNote.id] ?: currentNote // 如果备份包里有，直接用备份包的（保留原始创建/编辑时间）
+                            backupMap[currentNote.id] ?: currentNote
                         }.toMutableList()
 
-                        // 追加纯新增的笔记
                         val newNotes = restoredNotes.filter { it.id !in existingIds }
                         updatedList.addAll(newNotes)
 
-                        notes.clear()
-                        notes.addAll(updatedList)
+                        noteViewModel.updateNotesList(updatedList)
 
-                        withContext(Dispatchers.IO) { saveNotesToDisk(context, notes.toList()) }
                         showRestoreSuccess = true
                     } else {
                         Toast.makeText(context, "备份文件无效或为空", Toast.LENGTH_SHORT).show()
@@ -201,7 +190,7 @@ fun SettingsScreen(notes: MutableList<Note>, showDate: Boolean, navController: N
                 } catch (e: Exception) {
                     Toast.makeText(context, "恢复出错：${e.message}", Toast.LENGTH_SHORT).show()
                 } finally {
-                    showRestoreProgress = false // 绝对安全地解除屏幕锁死
+                    showRestoreProgress = false
                 }
             }
         }
@@ -219,8 +208,9 @@ fun SettingsScreen(notes: MutableList<Note>, showDate: Boolean, navController: N
                         }
                     }
                     if (content != null) {
-                        notes.add(Note(title = "导入文档", content = content))
-                        withContext(Dispatchers.IO) { saveNotesToDisk(context, notes.toList()) }
+                        val newNote = Note(title = "导入文档", content = content)
+                        noteViewModel.saveNote(newNote)
+
                         Toast.makeText(context, "纯文本导入成功！", Toast.LENGTH_SHORT).show()
                     }
                 } catch (e: Exception) {
@@ -240,10 +230,9 @@ fun SettingsScreen(notes: MutableList<Note>, showDate: Boolean, navController: N
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(scrollState)
-                .padding(horizontal = 24.dp), // 👈 仅保留左右边距，使滚动视口延伸至全屏
+                .padding(horizontal = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // 🌟 1. 顶部状态栏安全占位：初始不被遮挡，上滑时内容可直接穿透状态栏
             Spacer(modifier = Modifier.height(innerPadding.calculateTopPadding() + 16.dp))
 
             Surface(
@@ -333,7 +322,6 @@ fun SettingsScreen(notes: MutableList<Note>, showDate: Boolean, navController: N
             }
             Spacer(modifier = Modifier.height(24.dp))
 
-            // ================= 动画模块 1：个性化主题 =================
             AnimatedContent(
                 targetState = expandTheme,
                 label = "ThemeTransform",
@@ -589,7 +577,6 @@ fun SettingsScreen(notes: MutableList<Note>, showDate: Boolean, navController: N
             }
             Spacer(modifier = Modifier.height(24.dp))
 
-            // ================= 动画模块 2：数据备份 =================
             AnimatedContent(
                 targetState = expandBackup,
                 label = "BackupTransform",
@@ -712,21 +699,18 @@ fun SettingsScreen(notes: MutableList<Note>, showDate: Boolean, navController: N
             }
             Spacer(modifier = Modifier.height(24.dp))
 
-            // 将两个按钮合为一个 Surface 背景
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(56.dp), // 高度精确修改为 56.dp
-                shape = RoundedCornerShape(32.dp), // 圆角代码和数值严格保持不变
+                    .height(56.dp),
+                shape = RoundedCornerShape(32.dp),
                 color = MaterialTheme.colorScheme.surfaceVariant,
-                shadowElevation = 8.dp // 阴影代码和数值严格保持不变
+                shadowElevation = 8.dp
             ) {
-                // 内部使用 Row 等分两个点击区域
                 Row(
                     modifier = Modifier.fillMaxSize(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // ---------------- 1. 待办按钮区 ----------------
                     Row(
                         modifier = Modifier
                             .weight(1f)
@@ -741,11 +725,10 @@ fun SettingsScreen(notes: MutableList<Note>, showDate: Boolean, navController: N
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(24.dp)
                         )
-                        Spacer(modifier = Modifier.width(6.dp)) // 改为横向间距
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text("待办", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
 
-                    // ---------------- 优雅的居中分割线 ----------------
                     Box(
                         modifier = Modifier
                             .width(1.dp)
@@ -753,7 +736,6 @@ fun SettingsScreen(notes: MutableList<Note>, showDate: Boolean, navController: N
                             .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f))
                     )
 
-                    // ---------------- 2. 更多设置按钮区 ----------------
                     Row(
                         modifier = Modifier
                             .weight(1f)
@@ -775,9 +757,7 @@ fun SettingsScreen(notes: MutableList<Note>, showDate: Boolean, navController: N
             }
 
             Spacer(modifier = Modifier.height(120.dp))
-            // ================= 全局弹窗 UI 渲染层 =================
 
-            // 1. 备份进度防误触遮罩
             if (showBackupProgress) {
                 AlertDialog(
                     onDismissRequest = { },
@@ -791,7 +771,6 @@ fun SettingsScreen(notes: MutableList<Note>, showDate: Boolean, navController: N
                 )
             }
 
-            // 2. 备份完成提示框
             if (showBackupSuccess) {
                 AlertDialog(
                     onDismissRequest = { showBackupSuccess = false },
@@ -808,7 +787,6 @@ fun SettingsScreen(notes: MutableList<Note>, showDate: Boolean, navController: N
                 )
             }
 
-            // 3. 恢复进度防误触遮罩
             if (showRestoreProgress) {
                 AlertDialog(
                     onDismissRequest = { },
@@ -822,7 +800,6 @@ fun SettingsScreen(notes: MutableList<Note>, showDate: Boolean, navController: N
                 )
             }
 
-            // 4. 恢复完成提示框
             if (showRestoreSuccess) {
                 AlertDialog(
                     onDismissRequest = { showRestoreSuccess = false },

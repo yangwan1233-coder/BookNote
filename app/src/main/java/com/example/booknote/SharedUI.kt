@@ -23,6 +23,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
@@ -115,11 +116,20 @@ private fun formatTime(timestamp: Long): String {
     return sdf.format(Date(timestamp))
 }
 // 核心优化：修改归档动画，使卡片与按钮作为一个整体向右飞出
+// 🌟 1. 修改配方，接收父级传来的状态和回调
 @Composable
-fun SwipeHoverNoteCard(note: Note, showDate: Boolean, onClick: () -> Unit, onArchive: () -> Unit, onDelete: () -> Unit) {
+fun SwipeHoverNoteCard(
+    note: Note,
+    showDate: Boolean,
+    currentlySwipedId: String?, // 👈 新增：当前被滑开的卡片 ID
+    onSwipeStateChange: (String?) -> Unit, // 👈 新增：通知父级更新状态
+    onClick: () -> Unit,
+    onArchive: () -> Unit,
+    onDelete: () -> Unit
+) {
     val scope = rememberCoroutineScope()
-    val offsetX = remember { Animatable(0f) } // 用于卡片拖拽和向左删除
-    val archiveOffsetX = remember { Animatable(0f) } // 用于控制整体向右归档飞出的偏移量
+    val offsetX = remember { Animatable(0f) }
+    val archiveOffsetX = remember { Animatable(0f) }
     val density = LocalDensity.current
 
     val configuration = LocalConfiguration.current
@@ -133,6 +143,13 @@ fun SwipeHoverNoteCard(note: Note, showDate: Boolean, onClick: () -> Unit, onArc
     val animatedArchiveScale by androidx.compose.animation.core.animateFloatAsState(targetValue = archiveScale, label = "archive")
     val animatedDeleteScale by androidx.compose.animation.core.animateFloatAsState(targetValue = deleteScale, label = "delete")
 
+    // 🌟 2. 监听父级状态：如果被滑开的不是自己，自己就乖乖缩回去
+    LaunchedEffect(currentlySwipedId) {
+        if (currentlySwipedId != note.id && offsetX.targetValue < 0f) {
+            offsetX.animateTo(0f, spring(dampingRatio = 0.7f, stiffness = 300f))
+        }
+    }
+
     // 最外层容器
     Box(modifier = Modifier
         .fillMaxWidth()
@@ -144,6 +161,15 @@ fun SwipeHoverNoteCard(note: Note, showDate: Boolean, onClick: () -> Unit, onArc
             horizontalArrangement = Arrangement.End,
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // 🌟 1. 计算当前卡片滑动的进度 (0f 到 1f)
+            // 当 offsetX 从 0 滑到 -buttonWidthPx 时，进度从 0 变成 1
+            val revealProgress = (-offsetX.value / buttonWidthPx).coerceIn(0f, 1f)
+
+            // 🌟 2. 算好联动参数
+            val dynamicScale = 0.6f + 0.4f * revealProgress // 按钮大小从 0.6 放大到 1.0
+            val dynamicAlpha = revealProgress // 透明度从 0 到 1
+            val parallaxX = 40f * (1f - revealProgress) // 视差：刚开始向右偏移 40 像素，慢慢归位
+
             // 归档按钮
             IconButton(
                 onClick = {
@@ -159,17 +185,27 @@ fun SwipeHoverNoteCard(note: Note, showDate: Boolean, onClick: () -> Unit, onArc
                             )
                         )
                         onArchive()
+                        onSwipeStateChange(null)
                     }
                 },
-                // 【仅修改此行】：增加了 8.dp 的阴影
-                modifier = Modifier.size(48.dp).scale(animatedArchiveScale).shadow(elevation = 8.dp, shape = CircleShape).background(Color(0xFF4CAF50), CircleShape)
+                modifier = Modifier
+                    .size(48.dp)
+                    // 🌟 【绝杀修改】：用 graphicsLayer 将跟手联动和点击动画完美结合
+                    .graphicsLayer {
+                        scaleX = dynamicScale * animatedArchiveScale
+                        scaleY = dynamicScale * animatedArchiveScale
+                        alpha = dynamicAlpha
+                        translationX = parallaxX
+                    }
+                    .shadow(elevation = 8.dp, shape = CircleShape)
+                    .background(Color(0xFF4CAF50), CircleShape)
             ) {
                 Icon(Icons.Default.Archive, "存档", tint = Color.White)
             }
 
             Spacer(modifier = Modifier.width(16.dp))
 
-// 删除按钮
+            // 删除按钮
             IconButton(
                 onClick = {
                     scope.launch {
@@ -184,26 +220,42 @@ fun SwipeHoverNoteCard(note: Note, showDate: Boolean, onClick: () -> Unit, onArc
                             )
                         )
                         onDelete()
+                        onSwipeStateChange(null)
                     }
                 },
-                // 【仅修改此行】：增加了 8.dp 的阴影
-                modifier = Modifier.size(48.dp).scale(animatedDeleteScale).shadow(elevation = 8.dp, shape = CircleShape).background(Color(0xFFF44336), CircleShape)
+                modifier = Modifier
+                    .size(48.dp)
+                    // 🌟 【绝杀修改】：同样注入联动引擎，为了让两个按钮有层次感，删除按钮的视差可以更大一点点
+                    .graphicsLayer {
+                        scaleX = dynamicScale * animatedDeleteScale
+                        scaleY = dynamicScale * animatedDeleteScale
+                        alpha = dynamicAlpha
+                        translationX = parallaxX * 1.5f // 👈 删除按钮在最右侧，让它位移稍大一点，错落有致
+                    }
+                    .shadow(elevation = 8.dp, shape = CircleShape)
+                    .background(Color(0xFFF44336), CircleShape)
             ) {
                 Icon(Icons.Default.Delete, "删除", tint = Color.White)
             }
         }
 
-        // 顶层：笔记卡片，带滑动手势与阴影 (拖拽逻辑维持原状)
+        // 顶层：笔记卡片
         Card(
             modifier = Modifier.fillMaxWidth().offset { IntOffset(offsetX.value.roundToInt(), 0) }
                 .pointerInput(Unit) {
                     detectHorizontalDragGestures(
+                        onDragStart = {
+                            onSwipeStateChange(note.id) // 🌟 刚开始拖拽，就告诉父级“我被滑开了”
+                        },
                         onDragEnd = {
                             scope.launch {
                                 if (offsetX.value < -buttonWidthPx / 2) {
-                                    offsetX.animateTo(-buttonWidthPx, spring(dampingRatio = 0.65f, stiffness = 300f))
+                                    // 🌟 3. 滑到尽头时，阻尼降低，产生 Q 弹动效
+                                    offsetX.animateTo(-buttonWidthPx, spring(dampingRatio = 0.45f, stiffness = 350f))
                                 } else {
-                                    offsetX.animateTo(0f, spring(dampingRatio = 0.65f, stiffness = 300f))
+                                    // 没滑到一半松手，干脆收回
+                                    offsetX.animateTo(0f, spring(dampingRatio = 0.7f, stiffness = 300f))
+                                    if (currentlySwipedId == note.id) onSwipeStateChange(null)
                                 }
                             }
                         }
@@ -214,22 +266,28 @@ fun SwipeHoverNoteCard(note: Note, showDate: Boolean, onClick: () -> Unit, onArc
                             offsetX.snapTo(newOffset)
                         }
                     }
-                }.clickable(onClick = onClick),
+                }
+                .clickable {
+                    // 🌟 4. 如果处于滑开状态，点击本体只是收回，不会进入编辑页
+                    if (offsetX.targetValue < 0f) {
+                        scope.launch {
+                            offsetX.animateTo(0f, spring(dampingRatio = 0.7f, stiffness = 300f))
+                            if (currentlySwipedId == note.id) onSwipeStateChange(null)
+                        }
+                    } else {
+                        onClick()
+                    }
+                },
             shape = CircleShape,
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
             elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
         ) {
-            // 【安全修复】：去掉了这里可能导致崩溃的 fillMaxHeight()
             Row(modifier = Modifier.fillMaxWidth().padding(vertical = 18.dp, horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (showDate) Text(text = formatTime(note.createdAt), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f), modifier = Modifier.padding(end = 12.dp))
 
-                // ================== 完美九宫格逻辑注入点 ==================
                 if (note.imagePaths.isNotEmpty()) {
-                    // 一句代码直接呼叫我们写好的独立组件！右边距 12.dp 通过 modifier 传入
                     NoteImageGrid(imagePaths = note.imagePaths, modifier = Modifier.padding(end = 12.dp))
                 }
-                // ================== 修改结束 ==================
-                // ================== 修改结束 ==================
 
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
                     Text(text = if (note.title.isNotBlank()) note.title else "无标题", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)

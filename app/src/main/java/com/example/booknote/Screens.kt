@@ -13,6 +13,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -49,10 +50,15 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.zIndex
+import dev.shreyaspatil.capturable.controller.rememberCaptureController
+
 
 // ================== 第二部分：主页代码 ==================
 @Composable
-fun HomeScreen(notes: MutableList<Note>, showDate: Boolean, navController: NavHostController) {
+fun HomeScreen(notes: List<Note>, showDate: Boolean, navController: NavHostController, noteViewModel: NoteViewModel) {
+    // ... 前面的代码保持不变 ...
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -71,17 +77,14 @@ fun HomeScreen(notes: MutableList<Note>, showDate: Boolean, navController: NavHo
     }.sortedBy { it.createdAt }
 
     val listState = rememberLazyListState()
-    var backPressedTime by remember { mutableStateOf(0L) }
 
-    BackHandler {
-        if (isSearchExpanded) {
-            isSearchExpanded = false
-            searchQuery = ""
-        } else {
-            val currentTime = System.currentTimeMillis()
-            if (currentTime - backPressedTime < 2000) { (context as? Activity)?.finish() }
-            else { backPressedTime = currentTime; Toast.makeText(context, "再按一次退出应用", Toast.LENGTH_SHORT).show() }
-        }
+    // 🌟 新增：在列表级别管理当前被侧滑的卡片 ID，安全且遵循单向数据流
+    var currentlySwipedNoteId by remember { mutableStateOf<String?>(null) }
+
+    // 只有在搜索框展开时，才启用拦截器
+    BackHandler(enabled = isSearchExpanded) {
+        isSearchExpanded = false
+        searchQuery = ""
     }
 
     // 【您的原版逻辑完全保留】：自动滚动到底部绝对未动
@@ -151,33 +154,26 @@ fun HomeScreen(notes: MutableList<Note>, showDate: Boolean, navController: NavHo
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                // 【大厂级动态间距】：
-                                // 如果是当月最后一条笔记，收缩间距，只留 2.dp 给下个月的标题；
-                                // 如果是普通的中间笔记，依然保持 12.dp 的舒适阅读距离！
                                 .padding(bottom = if (isLastNoteInMonth) 12.dp else 12.dp)
-                                // 🌟 动画注入 2：让每一张笔记卡片拥有神级丝滑形变动画
                                 .silkyScrollAnimation(listState = listState, itemKey = "note_${note.id}")
                         ) {
                             SwipeHoverNoteCard(
                                 note = note,
-                                showDate = showDate, // 注意：根据您上面的代码，这里的变量名应该是 showDates
+                                showDate = showDate,
+                                // 🌟 新增：传入当前被滑开的 ID，以及通知父级修改状态的回调
+                                currentlySwipedId = currentlySwipedNoteId,
+                                onSwipeStateChange = { id -> currentlySwipedNoteId = id },
                                 onClick = {
                                     keyboardController?.hide()
                                     navController.navigate("edit/${note.id}")
                                 },
                                 onArchive = {
-                                    val idx = notes.indexOfFirst { it.id == note.id }
-                                    if (idx >= 0) {
-                                        notes[idx] = notes[idx].copy(isArchived = true)
-                                        scope.launch { saveNotesToDisk(context, notes) }
-                                    }
+                                    val updatedNote = note.copy(isArchived = true)
+                                    noteViewModel.saveNote(updatedNote)
                                 },
                                 onDelete = {
-                                    val idx = notes.indexOfFirst { it.id == note.id }
-                                    if (idx >= 0) {
-                                        notes[idx] = notes[idx].copy(isDeleted = true)
-                                        scope.launch { saveNotesToDisk(context, notes) }
-                                    }
+                                    val updatedNote = note.copy(isDeleted = true)
+                                    noteViewModel.saveNote(updatedNote)
                                 }
                             )
                         }
@@ -208,8 +204,8 @@ data class NoteSnapshot(
     androidx.compose.ui.ExperimentalComposeUiApi::class // 【修复报错】：解决调出键盘API报红的问题
 )
 @Composable
-fun EditNoteScreen(navController: NavHostController, noteId: String, notes: MutableList<Note>) {
-    // 1. 定义富文本与标题的组合快照数据模型
+fun EditNoteScreen(navController: NavHostController, noteId: String, notes: List<Note>, noteViewModel: NoteViewModel) {
+    // ... 顶部的状态声明等代码保持完全不变 ...
 
     val redoStack = remember { mutableStateListOf<NoteSnapshot>() }
 
@@ -251,6 +247,21 @@ fun EditNoteScreen(navController: NavHostController, noteId: String, notes: Muta
     var fullScreenImageIndex by remember { mutableStateOf<Int?>(null) }
     var imageToDelete by remember { mutableStateOf<String?>(null) }
     var showDates by remember { mutableStateOf(true) }
+
+    // 🌟 新增：控制顶部悬浮提示的状态
+    var showTopToast by remember { mutableStateOf(false) }
+    var topToastMessage by remember { mutableStateOf("") }
+    // 🌟 新增：长图导出引擎控制中心
+    val captureController = rememberCaptureController()
+    var isExporting by remember { mutableStateOf(false) }
+
+    // 自动隐藏逻辑：展示 2 秒后消失
+    LaunchedEffect(showTopToast) {
+        if (showTopToast) {
+            kotlinx.coroutines.delay(2000)
+            showTopToast = false
+        }
+    }
 
 // ================= 新增：焦点与键盘控制器 =================
     val titleFocusRequester = remember { FocusRequester() }
@@ -328,51 +339,57 @@ fun EditNoteScreen(navController: NavHostController, noteId: String, notes: Muta
         }
     }
 
-    // 【100% 恢复您的原始保存逻辑，一字未改】
     val onBack = {
-        // ==========================================
-        // 【核心存储转换】：在存盘前，先把复杂的块结构整理好
-        // ==========================================
-        // 1. 将所有表格、导图、文字按排版顺序序列化为极其安全的 JSON
         val newBlocksJson = BlockSerializer.serializeBlocks(activeBlocks)
-
-        // 2. 提取出所有文本块的内容拼接成纯文本
         val pureTextPreview = activeBlocks
             .filterIsInstance<UITextBlock>()
             .joinToString("\n") { it.content.text }
             .trim()
 
-        // 3. 【防误删升级】：不仅要判断文字，还要判断是不是插入了纯表格或导图
         val hasRichBlocks = activeBlocks.any { it is UITableBlock || it is UIMindMapBlock }
         val isEmpty = title.isBlank() && pureTextPreview.isBlank() && imagePaths.isEmpty() && !hasRichBlocks
 
         if (isEmpty) {
-            notes.removeAll { it.id == currentNote.id }
-            Toast.makeText(context, "空白文档已舍弃", Toast.LENGTH_SHORT).show()
+            // 🌟 核心修复 A：如果是空白笔记，直接让 ViewModel 删掉它
+            noteViewModel.removeNoteById(currentNote.id)
+            topToastMessage = "空白文档已舍弃"
+            showTopToast = true
         } else {
-            val index = notes.indexOfFirst { it.id == currentNote.id }
-
-            // 4. 更新 Note 数据对象
             val updatedNote = currentNote.copy(
                 title = title,
-                content = pureTextPreview,  // 护城河：主页的预览依然只显示纯文本！
-                blocksJson = newBlocksJson, // 新能力：富文本的终极排版归宿！
+                content = pureTextPreview,
+                blocksJson = newBlocksJson,
                 imagePaths = imagePaths,
                 updatedAt = System.currentTimeMillis()
             )
 
-            if (index >= 0) notes[index] = updatedNote else notes.add(updatedNote)
+            // 🌟 核心修复 B：直接交给 ViewModel 统筹保存和落盘，无需再手动开协程写磁盘！
+            noteViewModel.saveNote(updatedNote)
 
-            // 指定 IO 线程进行磁盘操作，防止主线程卡顿
-            scope.launch(kotlinx.coroutines.Dispatchers.IO) { saveNotesToDisk(context, notes) }
-            Toast.makeText(context, "内容已保存", Toast.LENGTH_SHORT).show()
+            topToastMessage = "内容已保存"
+            showTopToast = true
         }
-        navController.popBackStack()
+
+        scope.launch {
+            delay(500)
+            navController.popBackStack()
+        }
     }
     BackHandler { onBack() }
 
-    Box(modifier = Modifier.fillMaxSize().imePadding()) {
-        Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
+    // 🌟 修复：去掉最外层 Box 的 imePadding，把它变成纯净的满屏容器
+    Box(modifier = Modifier.fillMaxSize()) {
+        // 让内部的 Column 自己去处理键盘高度
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .imePadding() // 👈 绝杀！键盘弹起指令下发给这个容器
+        ) {
+        Column(
+            modifier = Modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp)
+        ) {
+
             Spacer(
                 modifier = Modifier.height(
                     WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 80.dp
@@ -517,43 +534,92 @@ fun EditNoteScreen(navController: NavHostController, noteId: String, notes: Muta
             // 保留底部安全距离，防止键盘或悬浮栏遮挡最后一行字
             Spacer(modifier = Modifier.height(140.dp))
         }
-        Row(
-            modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            FloatingActionButton(
-                onClick = { onBack() },
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-                shape = CircleShape,
-                elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 8.dp),
-                modifier = Modifier.width(80.dp).height(48.dp)
+            Row(
+                modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Icon(Icons.Default.ArrowBack, "返回", modifier = Modifier.scale(1.3f))
-            }
+                // 1. 左侧：原封不动保留你的返回按钮
+                FloatingActionButton(
+                    onClick = { onBack() },
+                    containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    shape = CircleShape,
+                    elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 8.dp),
+                    modifier = Modifier.width(48.dp).height(48.dp)
+                ) {
+                    Icon(Icons.Default.ArrowBack, "返回", modifier = Modifier.scale(1.3f))
+                }
 
-            FloatingActionButton(
-                onClick = { onBack() },
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-                shape = CircleShape,
-                elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 8.dp),
-                modifier = Modifier.width(80.dp).height(48.dp)
-            ) {
-                Icon(Icons.Default.Check, "保存", modifier = Modifier.scale(1.3f))
+                // 2. 右侧：🌟 大厂级联排胶囊按钮 (分享长图 + 保存)
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
+                    contentColor = MaterialTheme.colorScheme.onPrimary, // 保证里面的图标颜色统一
+                    shadowElevation = 8.dp,
+                    modifier = Modifier.height(48.dp) // 与左侧返回按钮高度保持绝对一致
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 8.dp) // 给内部图标留出呼吸空间
+                    ) {
+                        // 🌟 按钮 A：分享/导出长图
+                        IconButton(
+                            onClick = {
+                                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                                    isExporting = true
+                                    topToastMessage = "正在生成长图..." // 🌟 气泡提示
+                                    showTopToast = true
+
+                                    scope.launch {
+                                        // 🌟 核心修复：必须给 Coil 引擎 1.2 秒的异步加载图片时间！
+                                        // 如果你的图片很多，甚至可以改成 1500ms
+                                        kotlinx.coroutines.delay(1200)
+                                        captureController.capture()
+                                    }
+                                }
+                            },
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Icon(Icons.Default.Share, contentDescription = "导出长图", modifier = Modifier.scale(1.1f))
+                        }
+
+                        // 🌟 极简美学：半透明竖形分割线
+                        Box(
+                            modifier = Modifier
+                                .width(1.dp)
+                                .fillMaxHeight(0.4f) // 高度只有胶囊的 40%，极其精致
+                                .background(MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.4f))
+                        )
+
+                        // 🌟 按钮 B：原本的保存逻辑
+                        IconButton(
+                            onClick = { onBack() },
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Icon(Icons.Default.Check, "保存", modifier = Modifier.scale(1.3f))
+                        }
+                    }
+                }
             }
-        }
 
         Column(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
             if (showDates) {
-                Column(modifier = Modifier.fillMaxWidth().padding(end = 16.dp, bottom = 12.dp), horizontalAlignment = Alignment.End) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(end = 16.dp, bottom = 12.dp),
+                    horizontalAlignment = Alignment.End
+                ) {
                     Text(
                         text = "创建: ${formatTime(currentNote.createdAt, "yyyy-MM-dd HH:mm")}",
                         fontSize = 12.sp,
                         color = customTextColor.copy(alpha = 0.8f) // 🌟 关键修改：替换为自定义笔记字体颜色
                     )
                     Text(
-                        text = "编辑: ${formatTime(System.currentTimeMillis(), "yyyy-MM-dd HH:mm")}",
+                        text = "编辑: ${
+                            formatTime(
+                                System.currentTimeMillis(),
+                                "yyyy-MM-dd HH:mm"
+                            )
+                        }",
                         fontSize = 12.sp,
                         color = customTextColor.copy(alpha = 0.8f) // 🌟 关键修改：替换为自定义笔记字体颜色
                     )
@@ -562,13 +628,27 @@ fun EditNoteScreen(navController: NavHostController, noteId: String, notes: Muta
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
+                    // 🌟 修改：减少底部冗余留白，贴近系统安全区
                     .padding(
-                        bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 24.dp
+                        bottom = WindowInsets.navigationBars.asPaddingValues()
+                            .calculateBottomPadding() + 8.dp
                     ),
                 contentAlignment = Alignment.Center
             ) {
-                Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.95f), shadowElevation = 8.dp) {
-                    Row(modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                // 🌟 修改：通过 modifier 直接锁死高度为 56.dp
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.95f),
+                    shadowElevation = 8.dp,
+                    modifier = Modifier.height(56.dp) // 👈 绝杀：锁定与液态导航栏一致的高度
+                ) {
+                    Row(
+                        // 🌟 修改：去掉垂直方向的 padding，让 Row 内部组件自己居中
+                        modifier = Modifier.padding(horizontal = 16.dp).fillMaxHeight(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp), // 稍微缩小间距，避免超出屏幕
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+
                         IconButton(onClick = {
                             val fullText = content.text
                             val start = content.selection.min
@@ -576,21 +656,42 @@ fun EditNoteScreen(navController: NavHostController, noteId: String, notes: Muta
 
                             if (start < end) {
                                 val selectedText = fullText.substring(start, end)
-                                val bulletedSelection = selectedText.split("\n").joinToString("\n") { line ->
-                                    if (line.isNotBlank() && !line.trim().startsWith("•")) "• $line" else line
-                                }
-                                val newText = fullText.substring(0, start) + bulletedSelection + fullText.substring(end)
-                                content = TextFieldValue(text = newText, selection = TextRange(start, start + bulletedSelection.length))
-                                Toast.makeText(context, "已将选中段落转化为列表", Toast.LENGTH_SHORT).show()
+                                val bulletedSelection =
+                                    selectedText.split("\n").joinToString("\n") { line ->
+                                        if (line.isNotBlank() && !line.trim()
+                                                .startsWith("•")
+                                        ) "• $line" else line
+                                    }
+                                val newText = fullText.substring(
+                                    0,
+                                    start
+                                ) + bulletedSelection + fullText.substring(end)
+                                content = TextFieldValue(
+                                    text = newText,
+                                    selection = TextRange(start, start + bulletedSelection.length)
+                                )
+                                Toast.makeText(
+                                    context,
+                                    "已将选中段落转化为列表",
+                                    Toast.LENGTH_SHORT
+                                ).show()
 
                                 // 【修复】：记录快照
                                 captureSnapshot()
 
                             } else {
-                                Toast.makeText(context, "请先长按滑动选中需要加列表符号的几行文字", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(
+                                    context,
+                                    "请先长按滑动选中需要加列表符号的几行文字",
+                                    Toast.LENGTH_SHORT
+                                ).show()
                             }
                         }) {
-                            Icon(Icons.Default.List, "列表排列", tint = MaterialTheme.colorScheme.primary)
+                            Icon(
+                                Icons.Default.List,
+                                "列表排列",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
                         }
 
                         // ==========================================
@@ -620,7 +721,11 @@ fun EditNoteScreen(navController: NavHostController, noteId: String, notes: Muta
                                 Toast.makeText(context, "无法撤销了", Toast.LENGTH_SHORT).show()
                             }
                         }) {
-                            Icon(Icons.Default.Undo, "撤销上一步", tint = MaterialTheme.colorScheme.primary)
+                            Icon(
+                                Icons.Default.Undo,
+                                "撤销上一步",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
                         }
 
                         // ==========================================
@@ -645,7 +750,11 @@ fun EditNoteScreen(navController: NavHostController, noteId: String, notes: Muta
                                 Toast.makeText(context, "无法重做了", Toast.LENGTH_SHORT).show()
                             }
                         }) {
-                            Icon(Icons.Default.Redo, "重做下一步", tint = MaterialTheme.colorScheme.primary)
+                            Icon(
+                                Icons.Default.Redo,
+                                "重做下一步",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
                         }
                         // ... 您原有的撤销、重做等按钮 ...
 
@@ -655,7 +764,8 @@ fun EditNoteScreen(navController: NavHostController, noteId: String, notes: Muta
                         EditorBottomBar(
                             onMindMapClick = {
                                 // 【安全计算插入位置】：紧贴着当前光标所在的下一行插入
-                                val insertIndex = (focusedBlockIndex + 1).coerceIn(0, activeBlocks.size)
+                                val insertIndex =
+                                    (focusedBlockIndex + 1).coerceIn(0, activeBlocks.size)
 
                                 val newMap = UIMindMapBlock()
                                 val newText = UITextBlock()
@@ -668,7 +778,8 @@ fun EditNoteScreen(navController: NavHostController, noteId: String, notes: Muta
                             },
                             onTableClick = {
                                 // 【安全计算插入位置】：紧贴着当前光标所在的下一行插入
-                                val insertIndex = (focusedBlockIndex + 1).coerceIn(0, activeBlocks.size)
+                                val insertIndex =
+                                    (focusedBlockIndex + 1).coerceIn(0, activeBlocks.size)
 
                                 val newTable = UITableBlock()
                                 val newText = UITextBlock()
@@ -682,9 +793,17 @@ fun EditNoteScreen(navController: NavHostController, noteId: String, notes: Muta
 
 
                         IconButton(onClick = {
-                            if (imagePaths.size < 9) photoPickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                            if (imagePaths.size < 9) photoPickerLauncher.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                            )
                             else Toast.makeText(context, "最多9张", Toast.LENGTH_SHORT).show()
-                        }) { Icon(Icons.Default.Image, "插入图片", tint = MaterialTheme.colorScheme.primary) }
+                        }) {
+                            Icon(
+                                Icons.Default.Image,
+                                "插入图片",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
                     }
                 }
             }
@@ -693,14 +812,22 @@ fun EditNoteScreen(navController: NavHostController, noteId: String, notes: Muta
         // 【升级】：极简胶囊形态的导图图标工具栏
         // =====================================
         if (selectedMindMapNodeId != null) {
-            val mapIndex = activeBlocks.indexOfFirst { it is UIMindMapBlock && findMindMapNode(it.rootNode, selectedMindMapNodeId!!) != null }
+            val mapIndex = activeBlocks.indexOfFirst {
+                it is UIMindMapBlock && findMindMapNode(
+                    it.rootNode,
+                    selectedMindMapNodeId!!
+                ) != null
+            }
             if (mapIndex != -1) {
                 val mapBlock = activeBlocks[mapIndex] as UIMindMapBlock
 
                 Surface(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .padding(bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 90.dp)
+                        .padding(
+                            bottom = WindowInsets.navigationBars.asPaddingValues()
+                                .calculateBottomPadding() + 90.dp
+                        )
                         // 【核心修复】：去掉固定宽度，使用 wrapContentWidth 让背景自动紧紧包裹住三个图标
                         .wrapContentWidth(),
                     // 【核心修复】：使用 CircleShape 达成极致的 100% 圆角（左右呈半圆形，也就是胶囊形状）
@@ -716,7 +843,12 @@ fun EditNoteScreen(navController: NavHostController, noteId: String, notes: Muta
                     ) {
                         // 1. 加细节分支 (子节点) - 使用“右下折角箭头”表示层级深入
                         IconButton(onClick = {
-                            activeBlocks[mapIndex] = mapBlock.copy(rootNode = addMindMapChild(mapBlock.rootNode, selectedMindMapNodeId!!))
+                            activeBlocks[mapIndex] = mapBlock.copy(
+                                rootNode = addMindMapChild(
+                                    mapBlock.rootNode,
+                                    selectedMindMapNodeId!!
+                                )
+                            )
                         }) {
                             Icon(
                                 imageVector = Icons.Default.SubdirectoryArrowRight,
@@ -727,7 +859,12 @@ fun EditNoteScreen(navController: NavHostController, noteId: String, notes: Muta
 
                         // 2. 加并列分支 (兄弟节点) - 使用“加号”表示同级新增
                         IconButton(onClick = {
-                            activeBlocks[mapIndex] = mapBlock.copy(rootNode = addMindMapSibling(mapBlock.rootNode, selectedMindMapNodeId!!))
+                            activeBlocks[mapIndex] = mapBlock.copy(
+                                rootNode = addMindMapSibling(
+                                    mapBlock.rootNode,
+                                    selectedMindMapNodeId!!
+                                )
+                            )
                         }) {
                             Icon(
                                 imageVector = Icons.Default.Add,
@@ -738,7 +875,8 @@ fun EditNoteScreen(navController: NavHostController, noteId: String, notes: Muta
 
                         // 3. 删节点 - 使用“垃圾桶”图标，并标红以示警告
                         IconButton(onClick = {
-                            val updated = deleteMindMapNode(mapBlock.rootNode, selectedMindMapNodeId!!)
+                            val updated =
+                                deleteMindMapNode(mapBlock.rootNode, selectedMindMapNodeId!!)
                             // 如果返回 null，说明删的是中心主题（根节点），则直接把整个导图区块删掉
                             if (updated == null) activeBlocks.removeAt(mapIndex)
                             else activeBlocks[mapIndex] = mapBlock.copy(rootNode = updated)
@@ -755,13 +893,79 @@ fun EditNoteScreen(navController: NavHostController, noteId: String, notes: Muta
                 }
             }
         }
-
-        // =====================================
-        // 【升级】：插入功能的联动 (让组件插在当前行的下一行！)
-        // =====================================
-        // 【无 Bug 完美替换】：插入功能的联动
-
-        //
+    }
+        // =================================================================
+        // 🌟 召唤隐藏的长图渲染舱
+        // =================================================================
+        NoteExportCanvas(
+            isExporting = isExporting,
+            captureController = captureController,
+            title = title,
+            timestamp = currentNote.createdAt,
+            imagePaths = imagePaths, // 👈 增加这一行！！！把图片传进去！
+            activeBlocks = activeBlocks,
+            themeState = themeState,
+            customTextColor = customTextColor,
+            onCaptureComplete = { bitmap ->
+                isExporting = false // 关闭渲染舱
+                if (bitmap != null) {
+                    scope.launch {
+                        val success = saveBitmapToGallery(context, bitmap, title)
+                        topToastMessage = if (success) "🎉 长图已保存到相册" else "长图保存失败"
+                        showTopToast = true
+                    }
+                } else {
+                    topToastMessage = "长图生成失败"
+                    showTopToast = true
+                }
+            }
+        )
+        // 🌟 新增：位于页面最顶层的液态悬浮气泡
+        // =================================================================
+        androidx.compose.animation.AnimatedVisibility(
+            visible = showTopToast,
+            enter = androidx.compose.animation.slideInVertically(initialOffsetY = { -it }) + androidx.compose.animation.fadeIn(),
+            exit = androidx.compose.animation.slideOutVertically(targetOffsetY = { -it }) + androidx.compose.animation.fadeOut(),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                // 精准计算状态栏高度，加上呼吸距，完美悬浮在顶部
+                .padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 24.dp)
+                .zIndex(100f) // 绝对置顶
+        ) {
+            Box(
+                modifier = Modifier
+                    .wrapContentSize()
+                    .padding(horizontal = 24.dp)
+                    // 🌟 设置 28dp 大圆角与液态玻璃导航栏完全一致
+                    .graphicsLayer {
+                        shadowElevation = 12.dp.toPx()
+                        shape = RoundedCornerShape(28.dp)
+                        clip = true
+                    }
+                    .background(
+                        brush = androidx.compose.ui.graphics.Brush.linearGradient(
+                            colors = listOf(
+                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.95f),
+                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.85f)
+                            )
+                        )
+                    )
+                    .border(
+                        width = 1.dp,
+                        color = Color.White.copy(alpha = 0.15f),
+                        shape = RoundedCornerShape(28.dp)
+                    )
+                    .padding(horizontal = 24.dp, vertical = 14.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = topToastMessage,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
     }
 
     if (fullScreenImageIndex != null) {
@@ -939,7 +1143,8 @@ fun NoteCardThumbnail(note: Note, showDate: Boolean, onClick: () -> Unit) {
     }
 }
 @Composable
-fun ArchiveScreen(notes: MutableList<Note>, showDate: Boolean, navController: NavHostController) {
+fun ArchiveScreen(notes: List<Note>, showDate: Boolean, navController: NavHostController, noteViewModel: NoteViewModel) {
+    // ... 前面的 UI 代码保持不变 ...
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val archiveNotes = notes.filter { it.isArchived && !it.isDeleted }.sortedBy { it.createdAt }
@@ -999,19 +1204,27 @@ fun ArchiveScreen(notes: MutableList<Note>, showDate: Boolean, navController: Na
                 TextButton(onClick = { navController.popBackStack() }) { Text("返回设置", fontWeight = FontWeight.Bold) }
                 Button(onClick = {
                     if (selectedIds.isNotEmpty()) {
-                        notes.replaceAll { if (it.id in selectedIds) it.copy(isArchived = false) else it }
-                        scope.launch { saveNotesToDisk(context, notes) }
+                        // 构建一个全新的列表映射，把选中的笔记的 isArchived 改为 false
+                        val updatedNotes = notes.map {
+                            if (it.id in selectedIds) it.copy(isArchived = false) else it
+                        }
+                        // 一键交给 ViewModel 刷新并落盘
+                        noteViewModel.updateNotesList(updatedNotes)
+
                         selectedIds = emptySet()
                         Toast.makeText(context, "已取消存档", Toast.LENGTH_SHORT).show()
                     } else Toast.makeText(context, "请先点击选择", Toast.LENGTH_SHORT).show()
                 }) { Text(if (selectedIds.isEmpty()) "取消存档" else "恢复选中 (${selectedIds.size})") }
+
+                // ... 后面的代码保持不变 ...
             }
         }
     }
 }
 
 @Composable
-fun TrashScreen(notes: MutableList<Note>, showDate: Boolean, navController: NavHostController) {
+fun TrashScreen(notes: List<Note>, showDate: Boolean, navController: NavHostController, noteViewModel: NoteViewModel) {
+    // ... 前面保持不变 ...
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val trashNotes = notes.filter { it.isDeleted }.sortedBy { it.createdAt }
@@ -1078,8 +1291,11 @@ fun TrashScreen(notes: MutableList<Note>, showDate: Boolean, navController: NavH
                 Button(
                     onClick = {
                         if (selectedIds.isNotEmpty()) {
-                            notes.replaceAll { if (it.id in selectedIds) it.copy(isDeleted = false) else it }
-                            scope.launch { saveNotesToDisk(context, notes) }
+                            val updatedNotes = notes.map {
+                                if (it.id in selectedIds) it.copy(isDeleted = false) else it
+                            }
+                            noteViewModel.updateNotesList(updatedNotes)
+
                             selectedIds = emptySet()
                             Toast.makeText(context, "笔记已成功恢复！", Toast.LENGTH_SHORT).show()
                         } else {
@@ -1091,11 +1307,14 @@ fun TrashScreen(notes: MutableList<Note>, showDate: Boolean, navController: NavH
                     Text(if (selectedIds.isEmpty()) "恢复笔记" else "恢复选中 (${selectedIds.size})")
                 }
 
+                // 🌟 3. 找到清空按钮，替换 onClick：
                 Button(
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
                     onClick = {
-                        notes.removeAll { it.isDeleted }
-                        scope.launch { saveNotesToDisk(context, notes) }
+                        // filterNot：直接过滤掉所有已被标记为删除的笔记，剩下干干净净的列表
+                        val updatedNotes = notes.filterNot { it.isDeleted }
+                        noteViewModel.updateNotesList(updatedNotes)
+
                         selectedIds = emptySet()
                         Toast.makeText(context, "回收站已清空", Toast.LENGTH_SHORT).show()
                     }

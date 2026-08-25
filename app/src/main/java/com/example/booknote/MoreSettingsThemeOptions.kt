@@ -167,11 +167,11 @@ fun MoreSettingsThemeOptions(
                             .fillMaxWidth()
                             .padding(start = 16.dp, end = 16.dp, bottom = 18.dp)
                     ) {
-                        Divider(
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
-                            thickness = 1.dp,
-                            modifier = Modifier.padding(bottom = 12.dp)
-                        )
+                        //Divider(
+                         //   color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+                          //  thickness = 1.dp,
+                          //  modifier = Modifier.padding(bottom = 12.dp)
+                        //)
 
                         // 第一排：跟随系统 / 浅色模式 / 深色模式
                         Row(
@@ -280,20 +280,32 @@ fun MoreSettingsThemeOptions(
                 ) {
                     // 读取当前颜色以初始化 RGB 滑块状态 (范围 0f - 1f)
                     val currentColor = Color(themeState.bgColorHex)
-                    var sliderR by remember(themeState.bgColorHex) { mutableFloatStateOf(currentColor.red) }
-                    var sliderG by remember(themeState.bgColorHex) { mutableFloatStateOf(currentColor.green) }
-                    var sliderB by remember(themeState.bgColorHex) { mutableFloatStateOf(currentColor.blue) }
+                    var sliderR by remember(themeState.bgColorHex) {
+                        mutableFloatStateOf(
+                            currentColor.red
+                        )
+                    }
+                    var sliderG by remember(themeState.bgColorHex) {
+                        mutableFloatStateOf(
+                            currentColor.green
+                        )
+                    }
+                    var sliderB by remember(themeState.bgColorHex) {
+                        mutableFloatStateOf(
+                            currentColor.blue
+                        )
+                    }
 
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(start = 16.dp, end = 16.dp, bottom = 18.dp)
                     ) {
-                        Divider(
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
-                            thickness = 1.dp,
-                            modifier = Modifier.padding(bottom = 12.dp)
-                        )
+                        //Divider(
+                         //   color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+                          //  thickness = 1.dp,
+                          //  modifier = Modifier.padding(bottom = 12.dp)
+                        //)
 
                         // ================= 第一排：默认 / 图片 =================
                         Row(
@@ -301,7 +313,13 @@ fun MoreSettingsThemeOptions(
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             OutlinedButton(
-                                onClick = { scope.launch { themeManager.updateBackgroundType(BackgroundType.DEFAULT) } },
+                                onClick = {
+                                    scope.launch {
+                                        themeManager.updateBackgroundType(
+                                            BackgroundType.DEFAULT
+                                        )
+                                    }
+                                },
                                 modifier = Modifier.weight(1f),
                                 shape = RoundedCornerShape(12.dp),
                                 colors = if (themeState.bgType == BackgroundType.DEFAULT)
@@ -325,7 +343,11 @@ fun MoreSettingsThemeOptions(
                                     ButtonDefaults.outlinedButtonColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
                                 else ButtonDefaults.outlinedButtonColors()
                             ) {
-                                Icon(Icons.Default.Image, contentDescription = null, modifier = Modifier.size(15.dp))
+                                Icon(
+                                    Icons.Default.Image,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(15.dp)
+                                )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text("图片", fontSize = 12.sp)
                             }
@@ -334,7 +356,11 @@ fun MoreSettingsThemeOptions(
                         Spacer(modifier = Modifier.height(16.dp))
 
                         // ================= 第二排：自定义预设选色盘 =================
-                        Text(text = "快捷纯色方案", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                        Text(
+                            text = "快捷纯色方案",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        )
                         Spacer(modifier = Modifier.height(8.dp))
 
                         val presetColors = listOf(
@@ -350,7 +376,9 @@ fun MoreSettingsThemeOptions(
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             presetColors.forEach { color ->
-                                val isSelected = themeState.bgType == BackgroundType.COLOR && themeState.bgColorHex == color.toArgb().toLong()
+                                val isSelected =
+                                    themeState.bgType == BackgroundType.COLOR && themeState.bgColorHex == color.toArgb()
+                                        .toLong()
                                 Box(
                                     modifier = Modifier
                                         .size(32.dp)
@@ -358,11 +386,17 @@ fun MoreSettingsThemeOptions(
                                         .background(color)
                                         .border(
                                             width = if (isSelected) 3.dp else 1.dp,
-                                            color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Gray.copy(alpha = 0.4f),
+                                            color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Gray.copy(
+                                                alpha = 0.4f
+                                            ),
                                             shape = CircleShape
                                         )
                                         .clickable {
-                                            scope.launch { themeManager.updateBackgroundColor(color.toArgb().toLong()) }
+                                            scope.launch {
+                                                themeManager.updateBackgroundColor(
+                                                    color.toArgb().toLong()
+                                                )
+                                            }
                                         }
                                 )
                             }
@@ -376,7 +410,11 @@ fun MoreSettingsThemeOptions(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(text = "RGB 自由调色", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                            Text(
+                                text = "RGB 自由调色",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                            )
                             // 实时颜色预览小圆点
                             Box(
                                 modifier = Modifier
@@ -395,48 +433,98 @@ fun MoreSettingsThemeOptions(
                                 .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
                                 .border(
                                     width = 1.dp,
-                                    color = if (themeState.bgType == BackgroundType.COLOR) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f) else Color.Transparent,
+                                    color = if (themeState.bgType == BackgroundType.COLOR) MaterialTheme.colorScheme.primary.copy(
+                                        alpha = 0.5f
+                                    ) else Color.Transparent,
                                     shape = RoundedCornerShape(12.dp)
                                 )
                                 .padding(horizontal = 12.dp, vertical = 8.dp)
                         ) {
                             // R 滑块
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("R", color = Color(0xFFE53935), fontWeight = FontWeight.Bold, modifier = Modifier.width(24.dp))
+                                Text(
+                                    "R",
+                                    color = Color(0xFFE53935),
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.width(24.dp)
+                                )
                                 Slider(
                                     value = sliderR,
                                     onValueChange = { sliderR = it },
                                     // 仅在手指松开时执行数据存储，防止拖动时卡顿
                                     onValueChangeFinished = {
-                                        scope.launch { themeManager.updateBackgroundColor(Color(sliderR, sliderG, sliderB).toArgb().toLong()) }
+                                        scope.launch {
+                                            themeManager.updateBackgroundColor(
+                                                Color(
+                                                    sliderR,
+                                                    sliderG,
+                                                    sliderB
+                                                ).toArgb().toLong()
+                                            )
+                                        }
                                     },
-                                    colors = SliderDefaults.colors(thumbColor = Color(0xFFE53935), activeTrackColor = Color(0xFFE53935).copy(alpha = 0.5f)),
+                                    colors = SliderDefaults.colors(
+                                        thumbColor = Color(0xFFE53935),
+                                        activeTrackColor = Color(0xFFE53935).copy(alpha = 0.5f)
+                                    ),
                                     modifier = Modifier.weight(1f).height(32.dp)
                                 )
                             }
                             // G 滑块
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("G", color = Color(0xFF4CAF50), fontWeight = FontWeight.Bold, modifier = Modifier.width(24.dp))
+                                Text(
+                                    "G",
+                                    color = Color(0xFF4CAF50),
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.width(24.dp)
+                                )
                                 Slider(
                                     value = sliderG,
                                     onValueChange = { sliderG = it },
                                     onValueChangeFinished = {
-                                        scope.launch { themeManager.updateBackgroundColor(Color(sliderR, sliderG, sliderB).toArgb().toLong()) }
+                                        scope.launch {
+                                            themeManager.updateBackgroundColor(
+                                                Color(
+                                                    sliderR,
+                                                    sliderG,
+                                                    sliderB
+                                                ).toArgb().toLong()
+                                            )
+                                        }
                                     },
-                                    colors = SliderDefaults.colors(thumbColor = Color(0xFF4CAF50), activeTrackColor = Color(0xFF4CAF50).copy(alpha = 0.5f)),
+                                    colors = SliderDefaults.colors(
+                                        thumbColor = Color(0xFF4CAF50),
+                                        activeTrackColor = Color(0xFF4CAF50).copy(alpha = 0.5f)
+                                    ),
                                     modifier = Modifier.weight(1f).height(32.dp)
                                 )
                             }
                             // B 滑块
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("B", color = Color(0xFF1E88E5), fontWeight = FontWeight.Bold, modifier = Modifier.width(24.dp))
+                                Text(
+                                    "B",
+                                    color = Color(0xFF1E88E5),
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.width(24.dp)
+                                )
                                 Slider(
                                     value = sliderB,
                                     onValueChange = { sliderB = it },
                                     onValueChangeFinished = {
-                                        scope.launch { themeManager.updateBackgroundColor(Color(sliderR, sliderG, sliderB).toArgb().toLong()) }
+                                        scope.launch {
+                                            themeManager.updateBackgroundColor(
+                                                Color(
+                                                    sliderR,
+                                                    sliderG,
+                                                    sliderB
+                                                ).toArgb().toLong()
+                                            )
+                                        }
                                     },
-                                    colors = SliderDefaults.colors(thumbColor = Color(0xFF1E88E5), activeTrackColor = Color(0xFF1E88E5).copy(alpha = 0.5f)),
+                                    colors = SliderDefaults.colors(
+                                        thumbColor = Color(0xFF1E88E5),
+                                        activeTrackColor = Color(0xFF1E88E5).copy(alpha = 0.5f)
+                                    ),
                                     modifier = Modifier.weight(1f).height(32.dp)
                                 )
                             }
@@ -498,22 +586,38 @@ fun MoreSettingsThemeOptions(
                     exit = shrinkVertically() + fadeOut()
                 ) {
                     val currentFontColor = Color(themeState.noteTextColorHex)
-                    var fontR by remember(themeState.noteTextColorHex) { mutableFloatStateOf(currentFontColor.red) }
-                    var fontG by remember(themeState.noteTextColorHex) { mutableFloatStateOf(currentFontColor.green) }
-                    var fontB by remember(themeState.noteTextColorHex) { mutableFloatStateOf(currentFontColor.blue) }
+                    var fontR by remember(themeState.noteTextColorHex) {
+                        mutableFloatStateOf(
+                            currentFontColor.red
+                        )
+                    }
+                    var fontG by remember(themeState.noteTextColorHex) {
+                        mutableFloatStateOf(
+                            currentFontColor.green
+                        )
+                    }
+                    var fontB by remember(themeState.noteTextColorHex) {
+                        mutableFloatStateOf(
+                            currentFontColor.blue
+                        )
+                    }
 
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(start = 16.dp, end = 16.dp, bottom = 18.dp)
                     ) {
-                        Divider(
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
-                            thickness = 1.dp,
-                            modifier = Modifier.padding(bottom = 12.dp)
-                        )
+                        //Divider(
+                          //  color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+                           // thickness = 1.dp,
+                           // modifier = Modifier.padding(bottom = 12.dp)
+                        //)
 
-                        Text(text = "快捷字体颜色", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                        Text(
+                            text = "快捷字体颜色",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        )
                         Spacer(modifier = Modifier.height(8.dp))
 
                         val presetFontColors = listOf(
@@ -529,7 +633,8 @@ fun MoreSettingsThemeOptions(
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             presetFontColors.forEach { color ->
-                                val isSelected = themeState.noteTextColorHex == color.toArgb().toLong()
+                                val isSelected =
+                                    themeState.noteTextColorHex == color.toArgb().toLong()
                                 Box(
                                     modifier = Modifier
                                         .size(32.dp)
@@ -537,11 +642,17 @@ fun MoreSettingsThemeOptions(
                                         .background(color)
                                         .border(
                                             width = if (isSelected) 3.dp else 1.dp,
-                                            color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Gray.copy(alpha = 0.4f),
+                                            color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Gray.copy(
+                                                alpha = 0.4f
+                                            ),
                                             shape = CircleShape
                                         )
                                         .clickable {
-                                            scope.launch { themeManager.updateNoteTextColor(color.toArgb().toLong()) }
+                                            scope.launch {
+                                                themeManager.updateNoteTextColor(
+                                                    color.toArgb().toLong()
+                                                )
+                                            }
                                         }
                                 )
                             }
@@ -554,9 +665,18 @@ fun MoreSettingsThemeOptions(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(text = "RGB 字体颜色调色", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                            Text(
+                                text = "RGB 字体颜色调色",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                            )
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("预览文字", color = Color(fontR, fontG, fontB), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text(
+                                    "预览文字",
+                                    color = Color(fontR, fontG, fontB),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Box(
                                     modifier = Modifier
@@ -582,49 +702,144 @@ fun MoreSettingsThemeOptions(
                                 .padding(horizontal = 12.dp, vertical = 8.dp)
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("R", color = Color(0xFFE53935), fontWeight = FontWeight.Bold, modifier = Modifier.width(24.dp))
+                                Text(
+                                    "R",
+                                    color = Color(0xFFE53935),
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.width(24.dp)
+                                )
                                 Slider(
                                     value = fontR,
                                     onValueChange = { fontR = it },
                                     onValueChangeFinished = {
-                                        scope.launch { themeManager.updateNoteTextColor(Color(fontR, fontG, fontB).toArgb().toLong()) }
+                                        scope.launch {
+                                            themeManager.updateNoteTextColor(
+                                                Color(
+                                                    fontR,
+                                                    fontG,
+                                                    fontB
+                                                ).toArgb().toLong()
+                                            )
+                                        }
                                     },
-                                    colors = SliderDefaults.colors(thumbColor = Color(0xFFE53935), activeTrackColor = Color(0xFFE53935).copy(alpha = 0.5f)),
+                                    colors = SliderDefaults.colors(
+                                        thumbColor = Color(0xFFE53935),
+                                        activeTrackColor = Color(0xFFE53935).copy(alpha = 0.5f)
+                                    ),
                                     modifier = Modifier.weight(1f).height(32.dp)
                                 )
                             }
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("G", color = Color(0xFF4CAF50), fontWeight = FontWeight.Bold, modifier = Modifier.width(24.dp))
+                                Text(
+                                    "G",
+                                    color = Color(0xFF4CAF50),
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.width(24.dp)
+                                )
                                 Slider(
                                     value = fontG,
                                     onValueChange = { fontG = it },
                                     onValueChangeFinished = {
-                                        scope.launch { themeManager.updateNoteTextColor(Color(fontR, fontG, fontB).toArgb().toLong()) }
+                                        scope.launch {
+                                            themeManager.updateNoteTextColor(
+                                                Color(
+                                                    fontR,
+                                                    fontG,
+                                                    fontB
+                                                ).toArgb().toLong()
+                                            )
+                                        }
                                     },
-                                    colors = SliderDefaults.colors(thumbColor = Color(0xFF4CAF50), activeTrackColor = Color(0xFF4CAF50).copy(alpha = 0.5f)),
+                                    colors = SliderDefaults.colors(
+                                        thumbColor = Color(0xFF4CAF50),
+                                        activeTrackColor = Color(0xFF4CAF50).copy(alpha = 0.5f)
+                                    ),
                                     modifier = Modifier.weight(1f).height(32.dp)
                                 )
                             }
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("B", color = Color(0xFF1E88E5), fontWeight = FontWeight.Bold, modifier = Modifier.width(24.dp))
+                                Text(
+                                    "B",
+                                    color = Color(0xFF1E88E5),
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.width(24.dp)
+                                )
                                 Slider(
                                     value = fontB,
                                     onValueChange = { fontB = it },
                                     onValueChangeFinished = {
-                                        scope.launch { themeManager.updateNoteTextColor(Color(fontR, fontG, fontB).toArgb().toLong()) }
+                                        scope.launch {
+                                            themeManager.updateNoteTextColor(
+                                                Color(
+                                                    fontR,
+                                                    fontG,
+                                                    fontB
+                                                ).toArgb().toLong()
+                                            )
+                                        }
                                     },
-                                    colors = SliderDefaults.colors(thumbColor = Color(0xFF1E88E5), activeTrackColor = Color(0xFF1E88E5).copy(alpha = 0.5f)),
+                                    colors = SliderDefaults.colors(
+                                        thumbColor = Color(0xFF1E88E5),
+                                        activeTrackColor = Color(0xFF1E88E5).copy(alpha = 0.5f)
+                                    ),
                                     modifier = Modifier.weight(1f).height(32.dp)
                                 )
                             }
                         }
-                    }
+                    } // 👈 结束内部 Column
+                } // 👈 结束 AnimatedVisibility
+            } // 👈 结束主 Column
+        } // 👈 结束字体颜色 Card
+    }
+        // =================================================================
+        // 🌟 修复后的“液态玻璃导航栏”专属卡片
+        // =================================================================
+
+        Spacer(modifier = Modifier.height(8.dp)) // 放大间距：与上方字体卡片拉开更大的呼吸空间
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 16.dp),
+        shape = RoundedCornerShape(28.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "💎 玻璃导航栏",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+
                 }
+                Switch(
+                    checked = themeState.isLiquidNavEnabled,
+                    onCheckedChange = { isChecked ->
+                        scope.launch { themeManager.updateLiquidNavEnabled(isChecked) }
+                    },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = MaterialTheme.colorScheme.primary,
+                        checkedTrackColor = MaterialTheme.colorScheme.primaryContainer
+                    )
+                )
             }
         }
-    }
+    // 👈 这个括号极其重要！它是结束最外层主 Column 的！
 
-    // 调色盘选色弹窗（原逻辑保留）
+    // =================================================================
+    // 🎨 调色盘弹窗必须放在主 Column 的外面，保持与 Column 平级
+    // =================================================================
     if (showColorPickerDialog) {
         ColorWheelPickerDialog(
             currentColor = Color(themeState.bgColorHex),
@@ -637,8 +852,7 @@ fun MoreSettingsThemeOptions(
             }
         )
     }
-}
-
+} // 👈 结束整个 MoreSettingsThemeOptions 函数的最外层大括号
 // 快速调色盘弹窗组件
 @Composable
 fun ColorWheelPickerDialog(

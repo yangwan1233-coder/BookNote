@@ -45,7 +45,7 @@ fun Modifier.silkyScrollAnimation(
             val (safeZone, endZone) = if (fraction < 0) {
                 0.96f to 1f // 上半屏状态栏黑洞
             } else {
-                0.56f to 0.6f // 下半屏导航栏黑洞
+                1f to 1f // 下半屏导航栏黑洞
             }
 
             if (fraction.absoluteValue <= safeZone) {

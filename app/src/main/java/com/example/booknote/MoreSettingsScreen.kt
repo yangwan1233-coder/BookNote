@@ -42,7 +42,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
-
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 @Composable
 fun MoreSettingsScreen(navController: NavHostController) {
     val context = LocalContext.current

@@ -196,26 +196,45 @@ suspend fun backupDataToZip(context: Context, uri: Uri, notes: List<Note>): Bool
     try {
         context.contentResolver.openOutputStream(uri)?.use { os ->
             ZipOutputStream(os).use { zos ->
+                // 1. 写入文本数据
                 zos.putNextEntry(ZipEntry(DATA_FILE_NAME))
                 zos.write(serializeNotes(notes).toByteArray(Charsets.UTF_8))
                 zos.closeEntry()
 
+                // 2. 遍历并写入图片
                 notes.flatMap { it.imagePaths }.distinct().forEach { imgPath ->
                     try {
-                        val imgUri = Uri.parse(imgPath)
-                        // 【致命崩溃修复】：使用位运算 (and 0x7FFFFFFF) 替代 Math.abs()
-                        // 彻底解决当 hashCode 等于 Int.MIN_VALUE 时出现的负数异常崩溃问题
+                        // 🌟 核心修复点：精准判断路径类型！
+                        // 如果是 content:// (外部相册/公开目录)，直接 parse。
+                        // 如果是 /data/... 或绝对路径，必须转换成 file:// 协议，或者用 Uri.fromFile。
+                        val imgUri = if (imgPath.startsWith("content://") || imgPath.startsWith("file://")) {
+                            Uri.parse(imgPath)
+                        } else {
+                            Uri.fromFile(File(imgPath)) // 👈 兼容沙盒私有路径的关键！
+                        }
+
+                        // 生成哈希文件名
                         val safeHash = imgPath.hashCode() and 0x7FFFFFFF
                         val fileName = "IMG_${safeHash}.jpg"
                         zos.putNextEntry(ZipEntry("images/$fileName"))
-                        context.contentResolver.openInputStream(imgUri)?.use { ins -> ins.copyTo(zos) }
+
+                        // 安全读取流并写入 zip
+                        context.contentResolver.openInputStream(imgUri)?.use { ins ->
+                            ins.copyTo(zos)
+                        }
                         zos.closeEntry()
-                    } catch (e: Exception) { /* 忽略单张损坏图片，保障全局打包不中断 */ }
+                    } catch (e: Exception) {
+                        // 忽略单张损坏图片，保障全局打包不中断
+                        e.printStackTrace()
+                    }
                 }
             }
         }
         true
-    } catch (e: Exception) { false }
+    } catch (e: Exception) {
+        e.printStackTrace()
+        false
+    }
 }
 
 suspend fun restoreDataFromZip(context: Context, uri: Uri): List<Note>? = withContext(Dispatchers.IO) {

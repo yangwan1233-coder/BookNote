@@ -1,4 +1,4 @@
-package com.example.booknote // 👈 请保持您原有的 package 路径
+package com.example.booknote
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -10,73 +10,76 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import coil.compose.rememberAsyncImagePainter
 import com.example.booknote.ui.theme.BookNoteTheme
 
 @Composable
 fun AppBackgroundContainer(
     themeState: AppThemeState,
+    blurRadius: Dp = 0.dp, // 🌟 新增参数：默认不模糊，可由外部动态控制
     content: @Composable () -> Unit
 ) {
-    // 1. 判断是否开启深色模式
     val isDark = when (themeState.themeMode) {
         ThemeMode.SYSTEM -> isSystemInDarkTheme()
         ThemeMode.LIGHT -> false
         ThemeMode.DARK -> true
     }
 
-    // 2. 保持原生 MaterialTheme，不强制重置按钮色彩系统（防止按钮变黑）
     BookNoteTheme {
         Box(modifier = Modifier.fillMaxSize()) {
-            // 3. 渲染底层背景：仅改变背景色彩，不干扰按钮组件
             when {
-                // 如果开启了深色模式，且未强制指定自定义图片/纯色背景，则纯背景变黑色/极深灰
                 isDark && themeState.bgType == BackgroundType.DEFAULT -> {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(Color(0xFF121212)) // 👈 只把背景变黑，不改变按钮颜色
-                    )
+                    Box(modifier = Modifier.fillMaxSize().background(Color(0xFF121212)))
                 }
 
-                // 用户自定义纯色背景
                 themeState.bgType == BackgroundType.COLOR -> {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(Color(themeState.bgColorHex))
-                    )
+                    Box(modifier = Modifier.fillMaxSize().background(Color(themeState.bgColorHex)))
                 }
 
-                // 用户自定义图片背景
                 themeState.bgType == BackgroundType.IMAGE -> {
                     if (themeState.bgImageUri.isNotBlank()) {
-                        Image(
-                            painter = rememberAsyncImagePainter(themeState.bgImageUri),
-                            contentDescription = "App Global Background",
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop
-                        )
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            Image(
+                                painter = rememberAsyncImagePainter(themeState.bgImageUri),
+                                contentDescription = "App Global Background",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .graphicsLayer {
+                                        scaleX = 1.05f // 模糊时边缘可能会有白边，放大 5% 完美遮挡
+                                        scaleY = 1.05f
+                                    }
+                                    // 🌟 核心：根据外部传进来的 blurRadius 动态呈现模糊度（编辑页传 15.dp，其余传 0.dp）
+                                    .blur(radius = blurRadius)
+                            )
+
+                            // 智能感光蒙版
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(
+                                        if (isDark) {
+                                            Color.Black.copy(alpha = if (blurRadius > 0.dp) 0.65f else 0.6f)
+                                        } else {
+                                            Color.Black.copy(alpha = if (blurRadius > 0.dp) 0.3f else 0.25f)
+                                        }
+                                    )
+                            )
+                        }
                     } else {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(if (isDark) Color(0xFF121212) else MaterialTheme.colorScheme.background)
-                        )
+                        Box(modifier = Modifier.fillMaxSize().background(if (isDark) Color(0xFF121212) else MaterialTheme.colorScheme.background))
                     }
                 }
 
-                // 默认浅色背景
                 else -> {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(MaterialTheme.colorScheme.background)
-                    )
+                    Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background))
                 }
             }
 
-            // 4. 渲染顶层 UI 内容
             content()
         }
     }
