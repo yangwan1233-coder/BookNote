@@ -41,15 +41,15 @@ fun NoteExportCanvas(
     activeBlocks: List<UIBlock>,
     themeState: AppThemeState,
     customTextColor: Color,
+    exportBackgroundBrush: Brush? = null, // 🌟 新增：专属长图背景接口（支持自定义图案/渐变/纯色）
     onCaptureComplete: (Bitmap?) -> Unit
 ) {
     if (isExporting) {
-        // 🌟 锁死长图宽度，保证文字正确换行
         val canvasWidth = 420.dp
 
         Box(
             modifier = Modifier
-                .size(0.dp) // 隐藏渲染舱，不干扰当前屏幕
+                .size(0.dp)
                 .graphicsLayer { alpha = 0.01f }
         ) {
             Box(modifier = Modifier.wrapContentSize(unbounded = true)) {
@@ -60,25 +60,46 @@ fun NoteExportCanvas(
                     }
                 ) {
                     // ==========================================
-                    // 🎨 外层容器：去掉 9:16，背景设为完全透明（隐形）
+                    // 🎨 整体长图画布根背景：优先采用专属背景接口，没有则用纯色
+                    // ==========================================
+                    val defaultBrush = Brush.verticalGradient(
+                        colors = listOf(Color(themeState.bgColorHex), Color(themeState.bgColorHex))
+                    )
+
+                    // ==========================================
+                    // 🎨 外层容器：底层隐形层，设为完全透明！
                     // 仅利用 padding 撑开安全区，确保圆角和阴影不会被切掉
                     // ==========================================
                     Box(
                         modifier = Modifier
                             .width(canvasWidth)
                             .wrapContentHeight(unbounded = true)
-                            .background(Color.Transparent) // 🌟 隐形外层背景
+                            .background(Color.Transparent) // 🌟 恢复为透明隐形底层，绝不修改
                             .padding(horizontal = 24.dp, vertical = 24.dp),
                         contentAlignment = Alignment.TopCenter
                     ) {
                         // ==========================================
-                        // 💳 内层卡片本体：自带超大圆角、弥散阴影与高光描边
+                        // 💳 内层卡片本体：上层背景、恢复大圆角、弥散阴影
                         // ==========================================
                         Surface(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .wrapContentHeight()
-                                // 🌟 新增：给内层卡片添加拟态风高光描边
+                                // 🌟 1. 先铺底色：保证“默认纯色”预设时有主题色兜底，且恢复 32dp 圆角
+                                .background(
+                                    color = Color(themeState.bgColorHex),
+                                    shape = RoundedCornerShape(32.dp)
+                                )
+                                // 🌟 2. 叠加导图预设背景：如果有特色图案，就完美覆盖在底色上
+                                .then(
+                                    if (exportBackgroundBrush != null) {
+                                        Modifier.background(
+                                            brush = exportBackgroundBrush,
+                                            shape = RoundedCornerShape(32.dp) // 同步加上圆角
+                                        )
+                                    } else Modifier
+                                )
+                                // 🌟 3. 拟态风高光描边
                                 .border(
                                     width = 1.dp,
                                     brush = Brush.linearGradient(
@@ -90,25 +111,25 @@ fun NoteExportCanvas(
                                         start = androidx.compose.ui.geometry.Offset(0f, 0f),
                                         end = androidx.compose.ui.geometry.Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)
                                     ),
-                                    shape = RoundedCornerShape(32.dp) // 与表面圆角保持一致
+                                    shape = RoundedCornerShape(32.dp)
                                 ),
                             shape = RoundedCornerShape(32.dp),
-                            color = Color(themeState.bgColorHex), // 取自用户主题的底色
+                            color = Color.Transparent, // 🌟 表面必须透明，才能透出上面 Modifier 里画好的背景
                             shadowElevation = 16.dp // 柔和弥散阴影
                         ) {
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(horizontal = 32.dp, vertical = 40.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally // 🌟 全局横向居中基础设定
+                                horizontalAlignment = Alignment.CenterHorizontally
                             ) {
                                 // ------------------------------------
                                 // ① 顶部：居中带阴影的品牌胶囊
-                                // ------------------------------------
+                                // (👇 下面的代码一字不差，继续保留你的内容)
                                 Surface(
                                     shape = CircleShape,
-                                    color = MaterialTheme.colorScheme.surfaceVariant, // 柔和的胶囊底色
-                                    shadowElevation = 8.dp, // 🌟 胶囊弥散阴影
+                                    color = MaterialTheme.colorScheme.surfaceVariant,
+                                    shadowElevation = 8.dp,
                                     modifier = Modifier.padding(bottom = 32.dp)
                                 ) {
                                     Row(
@@ -116,7 +137,7 @@ fun NoteExportCanvas(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Icon(
-                                            Icons.Default.Book, // 软件图标
+                                            Icons.Default.Book,
                                             contentDescription = "App Icon",
                                             tint = MaterialTheme.colorScheme.primary,
                                             modifier = Modifier.size(16.dp)
@@ -132,28 +153,23 @@ fun NoteExportCanvas(
                                     }
                                 }
 
-                                // ------------------------------------
-                                // ② 笔记大标题 (完全居中)
-                                // ------------------------------------
+                                // ② 标题
                                 Text(
                                     text = if (title.isBlank()) "无标题笔记" else title,
                                     fontSize = 28.sp,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = customTextColor,
                                     lineHeight = 38.sp,
-                                    textAlign = TextAlign.Center, // 🌟 文本居中
+                                    textAlign = TextAlign.Center,
                                     modifier = Modifier.fillMaxWidth()
                                 )
                                 Spacer(modifier = Modifier.height(28.dp))
 
-                                // ==========================================
-                                // 🌟 内容区容器 (恢复左对齐排版)
-                                // ==========================================
+                                // ③ 内容区
                                 Column(
                                     modifier = Modifier.fillMaxWidth(),
-                                    horizontalAlignment = Alignment.Start // 内部图文恢复正常的左对齐
+                                    horizontalAlignment = Alignment.Start
                                 ) {
-                                    // ③ 图片展区
                                     if (imagePaths.isNotEmpty()) {
                                         ImageGrid(
                                             paths = imagePaths,
@@ -167,15 +183,14 @@ fun NoteExportCanvas(
                                         )
                                     }
 
-                                    // ④ 富文本正文与模块
                                     activeBlocks.forEach { block ->
                                         when (block) {
                                             is UITextBlock -> {
                                                 if (block.content.text.isNotBlank()) {
                                                     Text(
                                                         text = block.content.text,
-                                                        fontSize = 15.sp,
-                                                        color = customTextColor.copy(alpha = 0.96f),
+                                                        fontSize = 20.sp,
+                                                        color = customTextColor.copy(alpha = 0.85f),
                                                         lineHeight = 28.sp,
                                                         letterSpacing = 0.5.sp,
                                                         modifier = Modifier.padding(vertical = 6.dp)
@@ -199,25 +214,17 @@ fun NoteExportCanvas(
                                     }
                                 }
 
-                                // ------------------------------------
-                                // ⑤ 底部：加粗分割线并缩小间距
-                                // ------------------------------------
-                                Spacer(modifier = Modifier.height(20.dp)) // 🌟 高度减小，不再有过大留白
-
+                                Spacer(modifier = Modifier.height(20.dp))
                                 HorizontalDivider(
-                                    thickness = 2.dp, // 🌟 线条加粗
-                                    color = customTextColor.copy(alpha = 0.51f) // 稍微加深透明度，配合加粗效果
+                                    thickness = 2.dp,
+                                    color = customTextColor.copy(alpha = 0.51f)
                                 )
+                                Spacer(modifier = Modifier.height(12.dp))
 
-                                Spacer(modifier = Modifier.height(12.dp)) // 🌟 进一步缩减页脚上方的空间
-
-                                // ------------------------------------
-                                // ⑥ 居中专属页脚
-                                // ------------------------------------
                                 val dateStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(timestamp))
                                 Text(
                                     text = "来自 BookNote · $dateStr",
-                                    color = customTextColor.copy(alpha = 0.51f),
+                                    color = customTextColor.copy(alpha = 0.7f),
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Medium
                                 )

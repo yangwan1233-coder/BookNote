@@ -6,7 +6,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.IntrinsicSize
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
@@ -50,9 +52,16 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.ImageShader
+import androidx.compose.ui.graphics.ShaderBrush
+import androidx.compose.ui.graphics.TileMode
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.zIndex
 import dev.shreyaspatil.capturable.controller.rememberCaptureController
+import androidx.compose.ui.graphics.asImageBitmap
+import dev.chrisbanes.haze.haze
 
 
 // ================== 第二部分：主页代码 ==================
@@ -896,18 +905,49 @@ fun EditNoteScreen(navController: NavHostController, noteId: String, notes: List
     }
         // =================================================================
         // 🌟 召唤隐藏的长图渲染舱
-        // =================================================================
+
+        val exportContext = LocalContext.current
+        val exportSharedPref = remember { exportContext.getSharedPreferences("booknote_prefs", Context.MODE_PRIVATE) }
+        val savedPatternName = exportSharedPref.getString("export_bg_pattern", "默认纯色")
+
+        // 🌟 将本地图片强行塞入 Compose 原生 Brush 里，完美避开截图库的加载 BUG
+        val exportBrush = remember(savedPatternName) {
+            when (savedPatternName) {
+                "极光幻彩" -> Brush.linearGradient(listOf(Color(0xFF8A2387), Color(0xFFE94057), Color(0xFFF27121)))
+                "深空星海" -> Brush.verticalGradient(listOf(Color(0xFF0F2027), Color(0xFF203A43), Color(0xFF2C5364)))
+                "落日余晖" -> Brush.horizontalGradient(listOf(Color(0xFFFA709A), Color(0xFFFEE140)))
+                "森系清新" -> Brush.verticalGradient(listOf(Color(0xFF134E5E), Color(0xFF71B280)))
+                "自定义图片" -> {
+                    var customBrush: Brush? = null
+                    try {
+                        val file = java.io.File(exportContext.filesDir, "export_bg_image.jpg")
+                        if (file.exists()) {
+                            val bitmap = BitmapFactory.decodeFile(file.absolutePath)
+                            if (bitmap != null) {
+                                val imageBitmap = bitmap.asImageBitmap()
+                                val shader = ImageShader(imageBitmap, TileMode.Clamp, TileMode.Clamp)
+                                customBrush = ShaderBrush(shader)
+                            }
+                        }
+                    } catch (e: Exception) { e.printStackTrace() }
+                    customBrush
+                }
+                else -> null // 默认纯色
+            }
+        }
+
         NoteExportCanvas(
             isExporting = isExporting,
             captureController = captureController,
             title = title,
             timestamp = currentNote.createdAt,
-            imagePaths = imagePaths, // 👈 增加这一行！！！把图片传进去！
+            imagePaths = imagePaths,
             activeBlocks = activeBlocks,
-            themeState = themeState,
-            customTextColor = customTextColor,
+            themeState = themeState,          // 👈 保留一次即可
+            customTextColor = customTextColor, // 👈 保留一次即可
+            exportBackgroundBrush = exportBrush, // 🌟 传入你的背景预设
             onCaptureComplete = { bitmap ->
-                isExporting = false // 关闭渲染舱
+                isExporting = false
                 if (bitmap != null) {
                     scope.launch {
                         val success = saveBitmapToGallery(context, bitmap, title)
@@ -1143,35 +1183,52 @@ fun NoteCardThumbnail(note: Note, showDate: Boolean, onClick: () -> Unit) {
     }
 }
 @Composable
-fun ArchiveScreen(notes: List<Note>, showDate: Boolean, navController: NavHostController, noteViewModel: NoteViewModel) {
-    // ... 前面的 UI 代码保持不变 ...
+fun ArchiveScreen(
+    notes: List<Note>,
+    showDate: Boolean,
+    navController: NavHostController,
+    noteViewModel: NoteViewModel,
+    themeState: AppThemeState
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val archiveNotes = notes.filter { it.isArchived && !it.isDeleted }.sortedBy { it.createdAt }
     var selectedIds by remember { mutableStateOf(setOf<String>()) }
+    val hazeState = remember { dev.chrisbanes.haze.HazeState() }
+
+    // 🌟 1. 新增：控制顶部悬浮提示的状态和定时器
+    var showTopToast by remember { mutableStateOf(false) }
+    var topToastMessage by remember { mutableStateOf("") }
+
+    LaunchedEffect(showTopToast) {
+        if (showTopToast) {
+            kotlinx.coroutines.delay(2000)
+            showTopToast = false
+        }
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            // 【核心修改 1】将 top padding 扩大到 120.dp，完美填充标题与日期列表之间的间距，保持与主页一致
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 120.dp, bottom = 140.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            var currentYear = ""
-            archiveNotes.forEach { note ->
-                val noteYear = formatTime(note.createdAt, "yyyy年")
-                if (noteYear != currentYear) { currentYear = noteYear; item { YearHeader(year = noteYear) } }
-                item(key = note.id) {
-                    val isSelected = selectedIds.contains(note.id)
-                    Box(modifier = Modifier.fillMaxWidth().clickable { selectedIds = if (isSelected) selectedIds - note.id else selectedIds + note.id }) {
-                        NoteCardThumbnail(note = note, showDate = showDate, onClick = { selectedIds = if (isSelected) selectedIds - note.id else selectedIds + note.id })
-                        if (isSelected) Box(modifier = Modifier.matchParentSize().background(MaterialTheme.colorScheme.primary.copy(alpha = 0.3f), CircleShape))
+        Box(modifier = Modifier.fillMaxSize().haze(hazeState)) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 120.dp, bottom = 140.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                var currentYear = ""
+                archiveNotes.forEach { note ->
+                    val noteYear = formatTime(note.createdAt, "yyyy年")
+                    if (noteYear != currentYear) { currentYear = noteYear; item { YearHeader(year = noteYear) } }
+                    item(key = note.id) {
+                        val isSelected = selectedIds.contains(note.id)
+                        Box(modifier = Modifier.fillMaxWidth().clickable { selectedIds = if (isSelected) selectedIds - note.id else selectedIds + note.id }) {
+                            NoteCardThumbnail(note = note, showDate = showDate, onClick = { selectedIds = if (isSelected) selectedIds - note.id else selectedIds + note.id })
+                            if (isSelected) Box(modifier = Modifier.matchParentSize().background(MaterialTheme.colorScheme.primary.copy(alpha = 0.3f), CircleShape))
+                        }
                     }
                 }
             }
         }
 
-        // 【核心修改 2】归档箱标题：变成悬浮胶囊！增加与导航栏完全一致的背景色(surfaceVariant)、8.dp阴影和极限圆角
         Surface(
             modifier = Modifier.align(Alignment.TopCenter).padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 16.dp),
             shape = CircleShape,
@@ -1179,82 +1236,174 @@ fun ArchiveScreen(notes: List<Note>, showDate: Boolean, navController: NavHostCo
             shadowElevation = 8.dp
         ) {
             Text(
-                text = "归档箱",
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold,
+                text = "归档箱", fontSize = 20.sp, fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 32.dp, vertical = 12.dp)
             )
         }
 
-        // 【精准修改点 1】：归档箱底部悬浮栏位置完美对齐大厂全面屏规范
-        Surface(
-            modifier = Modifier
-                .align(Alignment.BottomCenter) // 【核心1：绝对锚点】
-                .fillMaxWidth()                // 【核心2：横向占满】
-                .wrapContentWidth()            // 【兼顾原有属性】：内容弹性收缩居中，防止胶囊变形拉长
-                .padding(                      // 【核心3：安全区与呼吸距】
-                    bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 24.dp
-                ),
-            shape = CircleShape,
-            color = MaterialTheme.colorScheme.surfaceVariant,
-            shadowElevation = 8.dp
-        ) {
-            Row(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = { navController.popBackStack() }) { Text("返回设置", fontWeight = FontWeight.Bold) }
-                Button(onClick = {
-                    if (selectedIds.isNotEmpty()) {
-                        // 构建一个全新的列表映射，把选中的笔记的 isArchived 改为 false
-                        val updatedNotes = notes.map {
-                            if (it.id in selectedIds) it.copy(isArchived = false) else it
+        if (themeState.isLiquidNavEnabled) {
+            Row(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 12.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                LiquidGlassSingleButton(
+                    baseWidth = 100.dp, baseHeight = 48.dp,
+                    onClick = { navController.popBackStack() },
+                    icon = Icons.Default.ArrowBack,
+                    hazeState = hazeState
+                )
+
+                Spacer(modifier = Modifier.width(20.dp))
+
+                LiquidGlassSingleButton(
+                    baseWidth = 100.dp, baseHeight = 56.dp,
+                    onClick = {
+                        if (selectedIds.isNotEmpty()) {
+                            val updatedNotes = notes.map { if (it.id in selectedIds) it.copy(isArchived = false) else it }
+                            noteViewModel.updateNotesList(updatedNotes)
+                            selectedIds = emptySet()
+                            // 🌟 2. 替换原有 Toast
+                            topToastMessage = "已取消存档"
+                            showTopToast = true
+                        } else {
+                            topToastMessage = "请先点击选择"
+                            showTopToast = true
                         }
-                        // 一键交给 ViewModel 刷新并落盘
-                        noteViewModel.updateNotesList(updatedNotes)
+                    },
+                    icon = Icons.Default.Refresh,
+                    isIndicatorStyle = true,
+                    badgeCount = selectedIds.size,
+                    hazeState = hazeState
+                )
+            }
+        } else {
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .wrapContentWidth()
+                    .padding(bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 24.dp),
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                shadowElevation = 8.dp
+            ) {
+                Row(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = { navController.popBackStack() }) { Text("返回", fontWeight = FontWeight.Bold) }
+                    Button(onClick = {
+                        if (selectedIds.isNotEmpty()) {
+                            val updatedNotes = notes.map { if (it.id in selectedIds) it.copy(isArchived = false) else it }
+                            noteViewModel.updateNotesList(updatedNotes)
+                            selectedIds = emptySet()
+                            // 🌟 3. 替换原有 Toast
+                            topToastMessage = "已取消存档"
+                            showTopToast = true
+                        } else {
+                            topToastMessage = "请先点击选择"
+                            showTopToast = true
+                        }
+                    }) { Text(if (selectedIds.isEmpty()) "恢复" else "恢复选中 (${selectedIds.size})") }
+                }
+            }
+        }
 
-                        selectedIds = emptySet()
-                        Toast.makeText(context, "已取消存档", Toast.LENGTH_SHORT).show()
-                    } else Toast.makeText(context, "请先点击选择", Toast.LENGTH_SHORT).show()
-                }) { Text(if (selectedIds.isEmpty()) "取消存档" else "恢复选中 (${selectedIds.size})") }
-
-                // ... 后面的代码保持不变 ...
+        // 🌟 4. 新增：顶部液态悬浮气泡组件 (放在整个 Box 的最末尾)
+        androidx.compose.animation.AnimatedVisibility(
+            visible = showTopToast,
+            enter = androidx.compose.animation.slideInVertically(initialOffsetY = { -it }) + androidx.compose.animation.fadeIn(),
+            exit = androidx.compose.animation.slideOutVertically(targetOffsetY = { -it }) + androidx.compose.animation.fadeOut(),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 24.dp)
+                .zIndex(100f)
+        ) {
+            Box(
+                modifier = Modifier
+                    .wrapContentSize()
+                    .padding(horizontal = 24.dp)
+                    .graphicsLayer {
+                        shadowElevation = 12.dp.toPx()
+                        shape = RoundedCornerShape(28.dp)
+                        clip = true
+                    }
+                    .background(
+                        brush = androidx.compose.ui.graphics.Brush.linearGradient(
+                            colors = listOf(
+                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.95f),
+                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.85f)
+                            )
+                        )
+                    )
+                    .border(
+                        width = 1.dp,
+                        color = Color.White.copy(alpha = 0.15f),
+                        shape = RoundedCornerShape(28.dp)
+                    )
+                    .padding(horizontal = 24.dp, vertical = 14.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = topToastMessage,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }
 }
 
 @Composable
-fun TrashScreen(notes: List<Note>, showDate: Boolean, navController: NavHostController, noteViewModel: NoteViewModel) {
-    // ... 前面保持不变 ...
+fun TrashScreen(
+    notes: List<Note>,
+    showDate: Boolean,
+    navController: NavHostController,
+    noteViewModel: NoteViewModel,
+    themeState: AppThemeState
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val trashNotes = notes.filter { it.isDeleted }.sortedBy { it.createdAt }
-
     var selectedIds by remember { mutableStateOf(setOf<String>()) }
+    val hazeState = remember { dev.chrisbanes.haze.HazeState() }
+
+    // 🌟 1. 新增：控制顶部悬浮提示的状态和定时器
+    var showTopToast by remember { mutableStateOf(false) }
+    var topToastMessage by remember { mutableStateOf("") }
+
+    LaunchedEffect(showTopToast) {
+        if (showTopToast) {
+            kotlinx.coroutines.delay(2000)
+            showTopToast = false
+        }
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            // 【核心修改 1】将 top padding 扩大到 120.dp
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 120.dp, bottom = 140.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            var currentYear = ""
-            trashNotes.forEach { note ->
-                val noteYear = formatTime(note.createdAt, "yyyy年")
-                if (noteYear != currentYear) { currentYear = noteYear; item { YearHeader(year = noteYear) } }
-                item(key = note.id) {
-                    val isSelected = selectedIds.contains(note.id)
-                    Box(modifier = Modifier.fillMaxWidth().clickable { selectedIds = if (isSelected) selectedIds - note.id else selectedIds + note.id }) {
-                        NoteCardThumbnail(note = note, showDate = showDate, onClick = { selectedIds = if (isSelected) selectedIds - note.id else selectedIds + note.id })
-                        if (isSelected) {
-                            Box(modifier = Modifier.matchParentSize().background(MaterialTheme.colorScheme.primary.copy(alpha = 0.3f), CircleShape))
+        Box(modifier = Modifier.fillMaxSize().haze(hazeState)) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 120.dp, bottom = 140.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                var currentYear = ""
+                trashNotes.forEach { note ->
+                    val noteYear = formatTime(note.createdAt, "yyyy年")
+                    if (noteYear != currentYear) { currentYear = noteYear; item { YearHeader(year = noteYear) } }
+                    item(key = note.id) {
+                        val isSelected = selectedIds.contains(note.id)
+                        Box(modifier = Modifier.fillMaxWidth().clickable { selectedIds = if (isSelected) selectedIds - note.id else selectedIds + note.id }) {
+                            NoteCardThumbnail(note = note, showDate = showDate, onClick = { selectedIds = if (isSelected) selectedIds - note.id else selectedIds + note.id })
+                            if (isSelected) Box(modifier = Modifier.matchParentSize().background(MaterialTheme.colorScheme.primary.copy(alpha = 0.3f), CircleShape))
                         }
                     }
                 }
             }
         }
 
-        // 【核心修改 2】回收站标题：悬浮胶囊化！保留了危险警示的 error 红色字体
         Surface(
             modifier = Modifier.align(Alignment.TopCenter).padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 16.dp),
             shape = CircleShape,
@@ -1262,65 +1411,158 @@ fun TrashScreen(notes: List<Note>, showDate: Boolean, navController: NavHostCont
             shadowElevation = 8.dp
         ) {
             Text(
-                text = "回收站",
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold,
+                text = "回收站", fontSize = 20.sp, fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.padding(horizontal = 32.dp, vertical = 12.dp)
             )
         }
 
-        // 【精准修改点 2】：回收站底部悬浮栏位置完美对齐大厂全面屏规范
-        Surface(
-            modifier = Modifier
-                .align(Alignment.BottomCenter) // 【核心1：绝对锚点】
-                .fillMaxWidth()                // 【核心2：横向占满】
-                .wrapContentWidth()            // 【兼顾原有属性】：内容弹性收缩居中，防止胶囊变形拉长
-                .padding(                      // 【核心3：安全区与呼吸距】
-                    bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 24.dp
-                ),
-            shape = CircleShape,
-            color = MaterialTheme.colorScheme.surfaceVariant,
-            shadowElevation = 8.dp
-        ) {
-            Row(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = { navController.popBackStack() }) {
-                    Text("返回设置", fontWeight = FontWeight.Bold)
-                }
+        if (themeState.isLiquidNavEnabled) {
+            Row(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 12.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                LiquidGlassSingleButton(
+                    baseWidth = 80.dp, baseHeight = 48.dp,
+                    onClick = { navController.popBackStack() },
+                    icon = Icons.Default.ArrowBack,
+                    hazeState = hazeState
+                )
+                Spacer(modifier = Modifier.width(16.dp))
 
-                Button(
+                LiquidGlassSingleButton(
+                    baseWidth = 80.dp, baseHeight = 56.dp,
                     onClick = {
                         if (selectedIds.isNotEmpty()) {
-                            val updatedNotes = notes.map {
-                                if (it.id in selectedIds) it.copy(isDeleted = false) else it
-                            }
+                            val updatedNotes = notes.map { if (it.id in selectedIds) it.copy(isDeleted = false) else it }
                             noteViewModel.updateNotesList(updatedNotes)
-
                             selectedIds = emptySet()
-                            Toast.makeText(context, "笔记已成功恢复！", Toast.LENGTH_SHORT).show()
+                            // 🌟 2. 替换原有 Toast
+                            topToastMessage = "笔记已成功恢复"
+                            showTopToast = true
                         } else {
-                            Toast.makeText(context, "请先点击选择要恢复的笔记", Toast.LENGTH_SHORT).show()
+                            topToastMessage = "请先点击选择"
+                            showTopToast = true
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                ) {
-                    Text(if (selectedIds.isEmpty()) "恢复笔记" else "恢复选中 (${selectedIds.size})")
-                }
+                    icon = Icons.Default.Refresh,
+                    isIndicatorStyle = true,
+                    badgeCount = selectedIds.size,
+                    hazeState = hazeState
+                )
+                Spacer(modifier = Modifier.width(16.dp))
 
-                // 🌟 3. 找到清空按钮，替换 onClick：
-                Button(
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                LiquidGlassSingleButton(
+                    baseWidth = 80.dp, baseHeight = 56.dp,
                     onClick = {
-                        // filterNot：直接过滤掉所有已被标记为删除的笔记，剩下干干净净的列表
+                        if(trashNotes.isEmpty()) {
+                            topToastMessage = "回收站已经是空的了"
+                            showTopToast = true
+                            return@LiquidGlassSingleButton
+                        }
                         val updatedNotes = notes.filterNot { it.isDeleted }
                         noteViewModel.updateNotesList(updatedNotes)
-
                         selectedIds = emptySet()
-                        Toast.makeText(context, "回收站已清空", Toast.LENGTH_SHORT).show()
+                        // 🌟 3. 替换原有 Toast
+                        topToastMessage = "已彻底清空"
+                        showTopToast = true
+                    },
+                    icon = Icons.Default.Delete,
+                    iconTint = MaterialTheme.colorScheme.error,
+                    hazeState = hazeState
+                )
+            }
+        } else {
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .wrapContentWidth()
+                    .padding(bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 24.dp),
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                shadowElevation = 8.dp
+            ) {
+                Row(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = { navController.popBackStack() }) { Text("返回", fontWeight = FontWeight.Bold) }
+                    Button(
+                        onClick = {
+                            if (selectedIds.isNotEmpty()) {
+                                val updatedNotes = notes.map { if (it.id in selectedIds) it.copy(isDeleted = false) else it }
+                                noteViewModel.updateNotesList(updatedNotes)
+                                selectedIds = emptySet()
+                                // 🌟 4. 替换原有 Toast
+                                topToastMessage = "笔记已成功恢复"
+                                showTopToast = true
+                            } else {
+                                topToastMessage = "请先点击选择"
+                                showTopToast = true
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                    ) {
+                        Text(if (selectedIds.isEmpty()) "恢复" else "恢复选中 (${selectedIds.size})")
                     }
-                ) {
-                    Text("清空回收站")
+                    Button(
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                        onClick = {
+                            val updatedNotes = notes.filterNot { it.isDeleted }
+                            noteViewModel.updateNotesList(updatedNotes)
+                            selectedIds = emptySet()
+                            // 🌟 5. 替换原有 Toast
+                            topToastMessage = "回收站已清空"
+                            showTopToast = true
+                        }
+                    ) { Text("清空") }
                 }
+            }
+        }
+
+        // 🌟 6. 新增：顶部液态悬浮气泡组件 (放在整个 Box 的最末尾)
+        androidx.compose.animation.AnimatedVisibility(
+            visible = showTopToast,
+            enter = androidx.compose.animation.slideInVertically(initialOffsetY = { -it }) + androidx.compose.animation.fadeIn(),
+            exit = androidx.compose.animation.slideOutVertically(targetOffsetY = { -it }) + androidx.compose.animation.fadeOut(),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 24.dp)
+                .zIndex(100f)
+        ) {
+            Box(
+                modifier = Modifier
+                    .wrapContentSize()
+                    .padding(horizontal = 24.dp)
+                    .graphicsLayer {
+                        shadowElevation = 12.dp.toPx()
+                        shape = RoundedCornerShape(28.dp)
+                        clip = true
+                    }
+                    .background(
+                        brush = androidx.compose.ui.graphics.Brush.linearGradient(
+                            colors = listOf(
+                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.95f),
+                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.85f)
+                            )
+                        )
+                    )
+                    .border(
+                        width = 1.dp,
+                        color = Color.White.copy(alpha = 0.15f),
+                        shape = RoundedCornerShape(28.dp)
+                    )
+                    .padding(horizontal = 24.dp, vertical = 14.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = topToastMessage,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }

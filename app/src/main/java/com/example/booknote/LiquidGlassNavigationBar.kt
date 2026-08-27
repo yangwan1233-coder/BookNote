@@ -4,8 +4,10 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -19,14 +21,18 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlin.math.abs
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeChild
+import androidx.compose.material3.Text
 
 data class BottomNavItem(
     val route: String,
@@ -82,7 +88,7 @@ fun LiquidGlassNavigationBar(
     // 🌟 按住不放时额外放大指示块，幅度比上一版更明显
     val indicatorScale = 1f + 0.35f * liftProgress
 
-    val blurRadius = (20 + 8 * liftProgress).dp
+    val blurRadius = (12 - 6 * liftProgress).dp
     val borderAlphaBoost = 1f + 0.3f * liftProgress
 
     val tabWidth = barWidth / totalSlots
@@ -135,6 +141,8 @@ fun LiquidGlassNavigationBar(
                     scaleY = indicatorScale
                 }
                 .clip(CircleShape)
+
+                // 跟随全局主题次色调
                 .background(MaterialTheme.colorScheme.primaryContainer)
         )
 
@@ -251,6 +259,249 @@ fun LiquidGlassNavigationBar(
                             scaleY = addScale
                         }
                 )
+            }
+        }
+    }
+}
+
+@Composable
+fun LiquidGlassSingleButton(
+    baseWidth: androidx.compose.ui.unit.Dp,
+    baseHeight: androidx.compose.ui.unit.Dp = 56.dp,
+    onClick: () -> Unit,
+    icon: ImageVector,
+    isIndicatorStyle: Boolean = false,
+    hazeState: HazeState
+) {
+    val interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+
+    val liftProgress by animateFloatAsState(
+        targetValue = if (isPressed) 1f else 0f,
+        animationSpec = spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMediumLow),
+        label = "lift_progress"
+    )
+
+    val barWidth = baseWidth * (1f + 0.10f * liftProgress)
+    val barHeight = baseHeight * (1f + 0.10f * liftProgress)
+    val shadowSize = 16f + 8f * liftProgress
+    val indicatorPadding = (6f - 1.2f * liftProgress).dp
+    val indicatorScale = 1f + 0.35f * liftProgress
+    val blurRadius = (12 - 6 * liftProgress).dp
+    val borderAlphaBoost = 1f + 0.3f * liftProgress
+
+    val iconScale by animateFloatAsState(
+        targetValue = if (isPressed) 1.2f else 1.0f,
+        animationSpec = spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMediumLow),
+        label = "icon_scale"
+    )
+
+    // ==========================================
+    // 🌟 外层大 Box：接管所有尺寸、点击和【阴影】
+    // ==========================================
+    Box(
+        modifier = Modifier
+            .width(barWidth)
+            .height(barHeight)
+            // 💡 核心修复：阴影提权到父节点，内部子节点失去 Z 轴捣乱的能力
+            .graphicsLayer {
+                //shadowElevation = shadowSize.dp.toPx()
+                shape = CircleShape
+                clip = false // 必须是 false，允许内部的色块发生液态溢出
+            }
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+
+        // --- 第 1 层：玻璃背板 (被剥夺阴影，彻底垫底) ---
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .clip(CircleShape) // 保证模糊边缘是圆滑的
+                .hazeChild(
+                    state = hazeState,
+                    shape = CircleShape,
+                    style = dev.chrisbanes.haze.HazeStyle(
+                        blurRadius = blurRadius,
+                        tint = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f),
+                    )
+                )
+                .border(
+                    width = 1.dp,
+                    brush = androidx.compose.ui.graphics.Brush.verticalGradient(
+                        colors = listOf(
+                            androidx.compose.ui.graphics.Color.White.copy(alpha = (0.6f * borderAlphaBoost).coerceAtMost(1f)),
+                            androidx.compose.ui.graphics.Color.White.copy(alpha = 0.05f),
+                            androidx.compose.ui.graphics.Color.White.copy(alpha = (0.2f * borderAlphaBoost).coerceAtMost(1f))
+                        )
+                    ),
+                    shape = CircleShape
+                )
+        )
+
+        // --- 第 2 层：指示块 (天然压在玻璃上) ---
+        if (isIndicatorStyle) {
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .padding(indicatorPadding)
+                    .graphicsLayer {
+                        scaleX = indicatorScale
+                        scaleY = indicatorScale
+                    }
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primaryContainer)
+            )
+        }
+
+        // --- 第 3 层：纯图标 (最高层级) ---
+        Icon(
+            imageVector = icon,
+            contentDescription = "按钮",
+            tint = if (isIndicatorStyle) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier
+                .size(24.dp)
+                .graphicsLayer {
+                    scaleX = iconScale
+                    scaleY = iconScale
+                }
+        )
+    }
+}
+
+// ==========================================
+// 🌟 纯图标液态玻璃单体按钮 (支持自定义颜色与数字角标)
+// ==========================================
+@Composable
+fun LiquidGlassSingleButton(
+    baseWidth: androidx.compose.ui.unit.Dp,
+    baseHeight: androidx.compose.ui.unit.Dp = 56.dp,
+    onClick: () -> Unit,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    isIndicatorStyle: Boolean = false,
+    iconTint: androidx.compose.ui.graphics.Color? = null, // 🌟 新增：支持强制覆盖图标颜色（用于删除按钮变红）
+    badgeCount: Int = 0, // 🌟 新增：支持右上角数字角标（用于显示选中了多少条）
+    hazeState: dev.chrisbanes.haze.HazeState
+) {
+    val interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+
+    val liftProgress by animateFloatAsState(
+        targetValue = if (isPressed) 1f else 0f,
+        animationSpec = spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMediumLow),
+        label = "lift_progress"
+    )
+
+    val barWidth = baseWidth * (1f + 0.10f * liftProgress)
+    val barHeight = baseHeight * (1f + 0.10f * liftProgress)
+    val shadowSize = 16f + 8f * liftProgress
+    val indicatorPadding = (6f - 1.2f * liftProgress).dp
+    val indicatorScale = 1f + 0.35f * liftProgress
+    val blurRadius = (12 - 6 * liftProgress).dp
+    val borderAlphaBoost = 1f + 0.3f * liftProgress
+
+    val iconScale by animateFloatAsState(
+        targetValue = if (isPressed) 1.2f else 1.0f,
+        animationSpec = spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMediumLow),
+        label = "icon_scale"
+    )
+
+    // 外层大 Box：接管所有尺寸、点击和层级分配
+    Box(
+        modifier = Modifier
+            .width(barWidth)
+            .height(barHeight)
+            .graphicsLayer {
+                //shadowElevation = shadowSize.dp.toPx()
+                shape = CircleShape
+                clip = false // 允许液态溢出和角标显示
+            }
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+
+        // --- 第 1 层：玻璃背板 (被剥夺阴影，彻底垫底) ---
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .clip(CircleShape)
+                .hazeChild(
+                    state = hazeState,
+                    shape = CircleShape,
+                    style = dev.chrisbanes.haze.HazeStyle(
+                        blurRadius = blurRadius,
+                        tint = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f),
+                    )
+                )
+                .border(
+                    width = 1.dp,
+                    brush = androidx.compose.ui.graphics.Brush.verticalGradient(
+                        colors = listOf(
+                            androidx.compose.ui.graphics.Color.White.copy(alpha = (0.6f * borderAlphaBoost).coerceAtMost(1f)),
+                            androidx.compose.ui.graphics.Color.White.copy(alpha = 0.05f),
+                            androidx.compose.ui.graphics.Color.White.copy(alpha = (0.2f * borderAlphaBoost).coerceAtMost(1f))
+                        )
+                    ),
+                    shape = CircleShape
+                )
+        )
+
+        // --- 第 2 层：指示块 (天然压在玻璃上) ---
+        if (isIndicatorStyle) {
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .padding(indicatorPadding)
+                    .graphicsLayer {
+                        scaleX = indicatorScale
+                        scaleY = indicatorScale
+                    }
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primaryContainer)
+            )
+        }
+
+        // --- 第 3 层：纯图标与数字角标 (最高层级) ---
+        Box(contentAlignment = Alignment.Center) {
+            // 智能判断颜色：优先使用传入的 iconTint (如红色)，否则根据是否有指示块决定是主题色还是文字色
+            val defaultTint = if (isIndicatorStyle) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+            Icon(
+                imageVector = icon,
+                contentDescription = "按钮",
+                tint = iconTint ?: defaultTint,
+                modifier = Modifier
+                    .size(24.dp)
+                    .graphicsLayer {
+                        scaleX = iconScale
+                        scaleY = iconScale
+                    }
+            )
+
+            // 🌟 核心新增：如果 badgeCount > 0，在图标右上角悬浮显示红色数字角标
+            if (badgeCount > 0) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .offset(x = 12.dp, y = (-12).dp) // 悬浮在右上角
+                        .size(18.dp)
+                        .background(MaterialTheme.colorScheme.error, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    androidx.compose.material3.Text(
+                        text = badgeCount.toString(),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onError
+                    )
+                }
             }
         }
     }

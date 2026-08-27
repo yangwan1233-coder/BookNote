@@ -14,8 +14,8 @@ android {
         minSdk = 31 // 门槛：最低只允许 Android 12 及以上的手机安装！抛弃老旧历史包袱。
         // 🌟 【核心修改】：靶心升级到 37，以 Android 17 为绝对优先的最高标准进行底层性能与 UI 优化！
         targetSdk = 37
-        versionCode = 26
-        versionName = "2.8.25.5"
+        versionCode = 27
+        versionName = "2.8.26"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -45,6 +45,8 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.media3.effect)
+    implementation(libs.androidx.ui.graphics)
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
