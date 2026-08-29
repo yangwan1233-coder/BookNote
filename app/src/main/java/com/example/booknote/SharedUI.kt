@@ -197,7 +197,7 @@ fun SwipeHoverNoteCard(
                         alpha = dynamicAlpha
                         translationX = parallaxX
                     }
-                    .shadow(elevation = 8.dp, shape = CircleShape)
+                    //.shadow(elevation = 8.dp, shape = CircleShape)
                     .background(Color(0xFF4CAF50), CircleShape)
             ) {
                 Icon(Icons.Default.Archive, "存档", tint = Color.White)
@@ -232,7 +232,7 @@ fun SwipeHoverNoteCard(
                         alpha = dynamicAlpha
                         translationX = parallaxX * 1.5f // 👈 删除按钮在最右侧，让它位移稍大一点，错落有致
                     }
-                    .shadow(elevation = 8.dp, shape = CircleShape)
+                    //.shadow(elevation = 8.dp, shape = CircleShape)
                     .background(Color(0xFFF44336), CircleShape)
             ) {
                 Icon(Icons.Default.Delete, "删除", tint = Color.White)

@@ -33,6 +33,9 @@ import kotlin.math.abs
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeChild
 import androidx.compose.material3.Text
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.zIndex
+import dev.chrisbanes.haze.HazeStyle
 
 data class BottomNavItem(
     val route: String,
@@ -40,6 +43,82 @@ data class BottomNavItem(
     val activeIcon: ImageVector,
     val inactiveIcon: ImageVector
 )
+
+// ==========================================
+// 🌟 共享的三层液态玻璃结构（私有）
+// 完全照搬 LiquidGlassNavigationBar 里已验证过没有覆盖问题的三层写法：
+// 第 1 层玻璃背板 / 第 2 层指示块(可选) / 第 3 层内容，各自显式 zIndex(0f/1f/2f)。
+// LiquidGlassNavigationBar 和 LiquidGlassSingleButton 都只是这个结构的两种不同用法。
+// ==========================================
+@Composable
+private fun LiquidGlassLayeredSurface(
+    width: Dp,
+    height: Dp,
+    hazeState: HazeState,
+    blurRadius: Dp,
+    borderAlphaBoost: Float,
+    indicatorModifier: Modifier? = null,
+    contentModifier: Modifier = Modifier,
+    contentAlignment: Alignment = Alignment.Center,
+    content: @Composable BoxScope.() -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .width(width)
+            .height(height)
+    ) {
+        // 第 1 层：玻璃背板，只负责模糊 / 描边，不放任何内容
+        Box(
+            modifier = Modifier
+                .width(width)
+                .height(height)
+                .zIndex(0f)
+                .graphicsLayer {
+                    shape = CircleShape
+                }
+                .clip(CircleShape)
+                .hazeChild(
+                    state = hazeState,
+                    style = HazeStyle(
+                        blurRadius = blurRadius,
+                        backgroundColor = Color.Transparent, // 必须补上背景色，防止运行时闪退
+                        tint = dev.chrisbanes.haze.HazeTint(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f))
+                    )
+                )
+                .border(
+                    width = 1.dp,
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            Color.White.copy(alpha = (0.6f * borderAlphaBoost).coerceAtMost(1f)),
+                            Color.White.copy(alpha = 0.05f),
+                            Color.White.copy(alpha = (0.2f * borderAlphaBoost).coerceAtMost(1f))
+                        )
+                    ),
+                    shape = CircleShape
+                )
+        )
+
+        // 第 2 层：液态指示块（可选，由调用方决定是否需要、以及位置/宽度）
+        if (indicatorModifier != null) {
+            Box(
+                modifier = indicatorModifier
+                    .zIndex(1f)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primaryContainer)
+            )
+        }
+
+        // 第 3 层：内容层（图标 / 图标 Row 等），永远盖在最上面
+        Box(
+            modifier = contentModifier
+                .width(width)
+                .height(height)
+                .zIndex(2f),
+            contentAlignment = contentAlignment,
+            content = content
+        )
+    }
+}
 
 @Composable
 fun LiquidGlassNavigationBar(
@@ -96,42 +175,15 @@ fun LiquidGlassNavigationBar(
     Box(
         modifier = Modifier.padding(bottom = 32.dp)
     ) {
-        // 第 1 层：玻璃背板，只负责模糊 / 描边 / 阴影，不放任何内容——
-        // 指示块和图标都不再嵌套在它里面，这样指示块就不会被这层半透明白雾盖暗
-        Box(
-            modifier = Modifier
-                .width(barWidth)
-                .height(barHeight)
-                .graphicsLayer {
-                    //shadowElevation = shadowSize.dp.toPx()
-                    shape = CircleShape
-                }
-                .clip(CircleShape)
-                .hazeChild(
-                    state = hazeState,
-                    shape = CircleShape,
-                    style = dev.chrisbanes.haze.HazeStyle(
-                        blurRadius = blurRadius,
-                        tint = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f),
-                    )
-                )
-                .border(
-                    width = 1.dp,
-                    brush = Brush.verticalGradient(
-                        colors = listOf(
-                            Color.White.copy(alpha = (0.6f * borderAlphaBoost).coerceAtMost(1f)),
-                            Color.White.copy(alpha = 0.05f),
-                            Color.White.copy(alpha = (0.2f * borderAlphaBoost).coerceAtMost(1f))
-                        )
-                    ),
-                    shape = CircleShape
-                )
-        )
-
-        // 第 2 层：液态焦点指示块——画在玻璃背板之上，颜色不会被蒙白雾遮暗；
-        // 没有外层 clip 约束，按住放大时可以真正溢出导航栏边界
-        Box(
-            modifier = Modifier
+        LiquidGlassLayeredSurface(
+            width = barWidth,
+            height = barHeight,
+            hazeState = hazeState,
+            blurRadius = blurRadius,
+            borderAlphaBoost = borderAlphaBoost,
+            // 液态焦点指示块——画在玻璃背板之上，颜色不会被蒙白雾遮暗；
+            // 没有外层 clip 约束，按住放大时可以真正溢出导航栏边界
+            indicatorModifier = Modifier
                 .offset(x = tabWidth * animatedOffset)
                 .width(tabWidth)
                 .height(barHeight)
@@ -139,18 +191,9 @@ fun LiquidGlassNavigationBar(
                 .graphicsLayer {
                     scaleX = indicatorScale
                     scaleY = indicatorScale
-                }
-                .clip(CircleShape)
-
-                // 跟随全局主题次色调
-                .background(MaterialTheme.colorScheme.primaryContainer)
-        )
-
-        // 第 3 层：图标 Row——盖在指示块最上面，尺寸和玻璃背板完全一致，手势也挂在这一层
-        Row(
-            modifier = Modifier
-                .width(barWidth)
-                .height(barHeight)
+                },
+            // 图标 Row 的手势也挂在内容层
+            contentModifier = Modifier
                 .onGloballyPositioned { tabWidthPx = it.size.width.toFloat() / totalSlots }
                 .pointerInput(Unit) {
                     awaitEachGesture {
@@ -185,29 +228,64 @@ fun LiquidGlassNavigationBar(
                     }
                 }
         ) {
-            items.forEachIndexed { index, item ->
-                val isSelected = currentRoute == item.route
+            Row(modifier = Modifier.fillMaxSize()) {
+                items.forEachIndexed { index, item ->
+                    val isSelected = currentRoute == item.route
 
-                val color by animateColorAsState(
-                    targetValue = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-                    animationSpec = tween(300), label = "icon_color"
-                )
+                    val color by animateColorAsState(
+                        targetValue = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                        animationSpec = tween(300), label = "icon_color"
+                    )
 
-                val baseScale = if (isSelected) 1.2f else 1.0f
-                val targetScale = if (isDragging && tabWidthPx > 0f) {
-                    val itemCenterX = (index + 0.5f) * tabWidthPx
+                    val baseScale = if (isSelected) 1.2f else 1.0f
+                    val targetScale = if (isDragging && tabWidthPx > 0f) {
+                        val itemCenterX = (index + 0.5f) * tabWidthPx
+                        val distance = abs(touchX - itemCenterX)
+                        val maxDist = tabWidthPx * 1.5f
+                        val normalized = (1f - distance / maxDist).coerceIn(0f, 1f)
+                        1.0f + 0.2f * normalized
+                    } else {
+                        baseScale
+                    }
+
+                    val scale by animateFloatAsState(
+                        targetValue = targetScale,
+                        animationSpec = spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMediumLow),
+                        label = "icon_scale"
+                    )
+
+                    Box(
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = if (isSelected) item.activeIcon else item.inactiveIcon,
+                            contentDescription = item.title,
+                            tint = color,
+                            modifier = Modifier
+                                .size(24.dp)
+                                .graphicsLayer {
+                                    scaleX = scale
+                                    scaleY = scale
+                                }
+                        )
+                    }
+                }
+
+                val addIndex = totalSlots - 1
+                val targetAddScale = if (isDragging && tabWidthPx > 0f) {
+                    val itemCenterX = (addIndex + 0.5f) * tabWidthPx
                     val distance = abs(touchX - itemCenterX)
                     val maxDist = tabWidthPx * 1.5f
                     val normalized = (1f - distance / maxDist).coerceIn(0f, 1f)
                     1.0f + 0.2f * normalized
                 } else {
-                    baseScale
+                    1.0f
                 }
 
-                val scale by animateFloatAsState(
-                    targetValue = targetScale,
-                    animationSpec = spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMediumLow),
-                    label = "icon_scale"
+                val addScale by animateFloatAsState(
+                    targetValue = targetAddScale,
+                    animationSpec = spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMediumLow), label = "add_scale"
                 )
 
                 Box(
@@ -215,176 +293,33 @@ fun LiquidGlassNavigationBar(
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = if (isSelected) item.activeIcon else item.inactiveIcon,
-                        contentDescription = item.title,
-                        tint = color,
+                        imageVector = Icons.Default.Add,
+                        contentDescription = "新建笔记",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier
-                            .size(24.dp)
+                            .size(28.dp)
                             .graphicsLayer {
-                                scaleX = scale
-                                scaleY = scale
+                                scaleX = addScale
+                                scaleY = addScale
                             }
                     )
                 }
             }
-
-            val addIndex = totalSlots - 1
-            val targetAddScale = if (isDragging && tabWidthPx > 0f) {
-                val itemCenterX = (addIndex + 0.5f) * tabWidthPx
-                val distance = abs(touchX - itemCenterX)
-                val maxDist = tabWidthPx * 1.5f
-                val normalized = (1f - distance / maxDist).coerceIn(0f, 1f)
-                1.0f + 0.2f * normalized
-            } else {
-                1.0f
-            }
-
-            val addScale by animateFloatAsState(
-                targetValue = targetAddScale,
-                animationSpec = spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMediumLow), label = "add_scale"
-            )
-
-            Box(
-                modifier = Modifier.weight(1f).fillMaxHeight(),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = "新建笔记",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier
-                        .size(28.dp)
-                        .graphicsLayer {
-                            scaleX = addScale
-                            scaleY = addScale
-                        }
-                )
-            }
         }
     }
 }
-
-@Composable
-fun LiquidGlassSingleButton(
-    baseWidth: androidx.compose.ui.unit.Dp,
-    baseHeight: androidx.compose.ui.unit.Dp = 56.dp,
-    onClick: () -> Unit,
-    icon: ImageVector,
-    isIndicatorStyle: Boolean = false,
-    hazeState: HazeState
-) {
-    val interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
-
-    val liftProgress by animateFloatAsState(
-        targetValue = if (isPressed) 1f else 0f,
-        animationSpec = spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMediumLow),
-        label = "lift_progress"
-    )
-
-    val barWidth = baseWidth * (1f + 0.10f * liftProgress)
-    val barHeight = baseHeight * (1f + 0.10f * liftProgress)
-    val shadowSize = 16f + 8f * liftProgress
-    val indicatorPadding = (6f - 1.2f * liftProgress).dp
-    val indicatorScale = 1f + 0.35f * liftProgress
-    val blurRadius = (12 - 6 * liftProgress).dp
-    val borderAlphaBoost = 1f + 0.3f * liftProgress
-
-    val iconScale by animateFloatAsState(
-        targetValue = if (isPressed) 1.2f else 1.0f,
-        animationSpec = spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMediumLow),
-        label = "icon_scale"
-    )
-
-    // ==========================================
-    // 🌟 外层大 Box：接管所有尺寸、点击和【阴影】
-    // ==========================================
-    Box(
-        modifier = Modifier
-            .width(barWidth)
-            .height(barHeight)
-            // 💡 核心修复：阴影提权到父节点，内部子节点失去 Z 轴捣乱的能力
-            .graphicsLayer {
-                //shadowElevation = shadowSize.dp.toPx()
-                shape = CircleShape
-                clip = false // 必须是 false，允许内部的色块发生液态溢出
-            }
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = onClick
-            ),
-        contentAlignment = Alignment.Center
-    ) {
-
-        // --- 第 1 层：玻璃背板 (被剥夺阴影，彻底垫底) ---
-        Box(
-            modifier = Modifier
-                .matchParentSize()
-                .clip(CircleShape) // 保证模糊边缘是圆滑的
-                .hazeChild(
-                    state = hazeState,
-                    shape = CircleShape,
-                    style = dev.chrisbanes.haze.HazeStyle(
-                        blurRadius = blurRadius,
-                        tint = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f),
-                    )
-                )
-                .border(
-                    width = 1.dp,
-                    brush = androidx.compose.ui.graphics.Brush.verticalGradient(
-                        colors = listOf(
-                            androidx.compose.ui.graphics.Color.White.copy(alpha = (0.6f * borderAlphaBoost).coerceAtMost(1f)),
-                            androidx.compose.ui.graphics.Color.White.copy(alpha = 0.05f),
-                            androidx.compose.ui.graphics.Color.White.copy(alpha = (0.2f * borderAlphaBoost).coerceAtMost(1f))
-                        )
-                    ),
-                    shape = CircleShape
-                )
-        )
-
-        // --- 第 2 层：指示块 (天然压在玻璃上) ---
-        if (isIndicatorStyle) {
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .padding(indicatorPadding)
-                    .graphicsLayer {
-                        scaleX = indicatorScale
-                        scaleY = indicatorScale
-                    }
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primaryContainer)
-            )
-        }
-
-        // --- 第 3 层：纯图标 (最高层级) ---
-        Icon(
-            imageVector = icon,
-            contentDescription = "按钮",
-            tint = if (isIndicatorStyle) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier
-                .size(24.dp)
-                .graphicsLayer {
-                    scaleX = iconScale
-                    scaleY = iconScale
-                }
-        )
-    }
-}
-
 // ==========================================
-// 🌟 纯图标液态玻璃单体按钮 (支持自定义颜色与数字角标)
+// 🌟 纯图标液态玻璃单体按钮 (100% 同款主页参数版)
 // ==========================================
 @Composable
 fun LiquidGlassSingleButton(
     baseWidth: androidx.compose.ui.unit.Dp,
-    baseHeight: androidx.compose.ui.unit.Dp = 56.dp,
+    baseHeight: androidx.compose.ui.unit.Dp = 48.dp,
     onClick: () -> Unit,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     isIndicatorStyle: Boolean = false,
-    iconTint: androidx.compose.ui.graphics.Color? = null, // 🌟 新增：支持强制覆盖图标颜色（用于删除按钮变红）
-    badgeCount: Int = 0, // 🌟 新增：支持右上角数字角标（用于显示选中了多少条）
+    iconTint: androidx.compose.ui.graphics.Color? = null,
+    badgeCount: Int = 0,
     hazeState: dev.chrisbanes.haze.HazeState
 ) {
     val interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
@@ -396,9 +331,9 @@ fun LiquidGlassSingleButton(
         label = "lift_progress"
     )
 
+    // 🌟 完全照搬主页导航栏的缩放公式！
     val barWidth = baseWidth * (1f + 0.10f * liftProgress)
     val barHeight = baseHeight * (1f + 0.10f * liftProgress)
-    val shadowSize = 16f + 8f * liftProgress
     val indicatorPadding = (6f - 1.2f * liftProgress).dp
     val indicatorScale = 1f + 0.35f * liftProgress
     val blurRadius = (12 - 6 * liftProgress).dp
@@ -410,98 +345,59 @@ fun LiquidGlassSingleButton(
         label = "icon_scale"
     )
 
-    // 外层大 Box：接管所有尺寸、点击和层级分配
-    Box(
-        modifier = Modifier
-            .width(barWidth)
-            .height(barHeight)
-            .graphicsLayer {
-                //shadowElevation = shadowSize.dp.toPx()
-                shape = CircleShape
-                clip = false // 允许液态溢出和角标显示
-            }
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = onClick
-            ),
-        contentAlignment = Alignment.Center
+    // 复用和导航栏完全同一份三层结构：背板 / 指示块(可选) / 内容(图标+角标)
+    LiquidGlassLayeredSurface(
+        width = barWidth,
+        height = barHeight,
+        hazeState = hazeState,
+        blurRadius = blurRadius,
+        borderAlphaBoost = borderAlphaBoost,
+        indicatorModifier = if (isIndicatorStyle) {
+            Modifier
+                .width(barWidth)
+                .height(barHeight)
+                .padding(indicatorPadding)
+                .graphicsLayer {
+                    scaleX = indicatorScale
+                    scaleY = indicatorScale
+                }
+        } else {
+            null
+        },
+        contentModifier = Modifier.clickable(
+            interactionSource = interactionSource,
+            indication = null,
+            onClick = onClick
+        )
     ) {
-
-        // --- 第 1 层：玻璃背板 (被剥夺阴影，彻底垫底) ---
-        Box(
+        val defaultTint = if (isIndicatorStyle) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+        Icon(
+            imageVector = icon,
+            contentDescription = "按钮",
+            tint = iconTint ?: defaultTint,
             modifier = Modifier
-                .matchParentSize()
-                .clip(CircleShape)
-                .hazeChild(
-                    state = hazeState,
-                    shape = CircleShape,
-                    style = dev.chrisbanes.haze.HazeStyle(
-                        blurRadius = blurRadius,
-                        tint = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f),
-                    )
-                )
-                .border(
-                    width = 1.dp,
-                    brush = androidx.compose.ui.graphics.Brush.verticalGradient(
-                        colors = listOf(
-                            androidx.compose.ui.graphics.Color.White.copy(alpha = (0.6f * borderAlphaBoost).coerceAtMost(1f)),
-                            androidx.compose.ui.graphics.Color.White.copy(alpha = 0.05f),
-                            androidx.compose.ui.graphics.Color.White.copy(alpha = (0.2f * borderAlphaBoost).coerceAtMost(1f))
-                        )
-                    ),
-                    shape = CircleShape
-                )
+                .size(24.dp)
+                .graphicsLayer {
+                    scaleX = iconScale
+                    scaleY = iconScale
+                }
         )
 
-        // --- 第 2 层：指示块 (天然压在玻璃上) ---
-        if (isIndicatorStyle) {
+        if (badgeCount > 0) {
             Box(
                 modifier = Modifier
-                    .matchParentSize()
-                    .padding(indicatorPadding)
-                    .graphicsLayer {
-                        scaleX = indicatorScale
-                        scaleY = indicatorScale
-                    }
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primaryContainer)
-            )
-        }
-
-        // --- 第 3 层：纯图标与数字角标 (最高层级) ---
-        Box(contentAlignment = Alignment.Center) {
-            // 智能判断颜色：优先使用传入的 iconTint (如红色)，否则根据是否有指示块决定是主题色还是文字色
-            val defaultTint = if (isIndicatorStyle) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
-            Icon(
-                imageVector = icon,
-                contentDescription = "按钮",
-                tint = iconTint ?: defaultTint,
-                modifier = Modifier
-                    .size(24.dp)
-                    .graphicsLayer {
-                        scaleX = iconScale
-                        scaleY = iconScale
-                    }
-            )
-
-            // 🌟 核心新增：如果 badgeCount > 0，在图标右上角悬浮显示红色数字角标
-            if (badgeCount > 0) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .offset(x = 12.dp, y = (-12).dp) // 悬浮在右上角
-                        .size(18.dp)
-                        .background(MaterialTheme.colorScheme.error, CircleShape),
-                    contentAlignment = Alignment.Center
-                ) {
-                    androidx.compose.material3.Text(
-                        text = badgeCount.toString(),
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onError
-                    )
-                }
+                    .align(Alignment.TopEnd)
+                    .offset(x = 12.dp, y = (-12).dp)
+                    .size(18.dp)
+                    .background(MaterialTheme.colorScheme.error, CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = badgeCount.toString(),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onError
+                )
             }
         }
     }

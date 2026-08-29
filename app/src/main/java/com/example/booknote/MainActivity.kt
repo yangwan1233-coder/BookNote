@@ -31,7 +31,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.haze
+import dev.chrisbanes.haze.hazeSource // 🌟 替换为 1.7.2 的 hazeSource
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
@@ -50,6 +50,29 @@ import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.ui.unit.dp
 // 🌟 引入 ViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.foundation.layout.BoxScope
+
+// ==================================================================
+// 🌟 核心重构：声明全局通信管道 (插槽架构)
+// ==================================================================
+val LocalGlobalHazeState = compositionLocalOf<HazeState> { error("未提供全局 HazeState") }
+val LocalFloatingUI = compositionLocalOf<MutableState<(@Composable BoxScope.() -> Unit)?>> { error("未提供悬浮层插槽") }
 
 class MainActivity : ComponentActivity() {
     private var globalNavController: NavHostController? = null
@@ -64,20 +87,25 @@ class MainActivity : ComponentActivity() {
             val themeState by themeManager.themeStateFlow.collectAsState(initial = AppThemeState())
 
             val navController = rememberNavController()
-
             val view = LocalView.current
+
+            val currentThemeMode = themeState.themeMode
+            val isIconInverted = themeState.isStatusBarIconInverted
+
             if (!view.isInEditMode) {
                 SideEffect {
                     val window = (view.context as? android.app.Activity)?.window
                     if (window != null) {
                         val insetsController = WindowCompat.getInsetsController(window, view)
-                        val defaultSystemDark = when (themeState.themeMode) {
+
+                        val defaultSystemDark = when (currentThemeMode) {
                             ThemeMode.LIGHT -> false
                             ThemeMode.DARK -> true
                             ThemeMode.SYSTEM -> view.context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
                         }
                         val defaultLightStatusBars = !defaultSystemDark
-                        insetsController.isAppearanceLightStatusBars = if (themeState.isStatusBarIconInverted) {
+
+                        insetsController.isAppearanceLightStatusBars = if (isIconInverted) {
                             !defaultLightStatusBars
                         } else {
                             defaultLightStatusBars
@@ -93,7 +121,6 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            // 🌟 拔掉这里的背景容器，直接调用 App，让 App 自己去管理 Z 轴层级！
             BookNoteApp(navController)
         }
     }
@@ -123,219 +150,171 @@ fun BookNoteApp(navController: NavHostController) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
     val context = LocalContext.current
-    val sharedPref =
-        remember { context.getSharedPreferences("booknote_prefs", Context.MODE_PRIVATE) }
+    val sharedPref = remember { context.getSharedPreferences("booknote_prefs", Context.MODE_PRIVATE) }
     var showDate by remember { mutableStateOf(sharedPref.getBoolean("show_date", true)) }
 
-    // ==================================================================
-    // 🌟 核心状态收编：大厂级 MVVM 架构
-    // 彻底淘汰本地的 MutableList，改为只读订阅 ViewModel 提供的状态流
-    // ==================================================================
     val noteViewModel: NoteViewModel = viewModel()
     val notes by noteViewModel.notesState.collectAsState()
 
-    // 🌟 1. 在这里创建照相机
+    // 🌟 全局照相机与动态悬浮插槽
     val hazeState = remember { HazeState() }
+    val floatingUIState = remember { mutableStateOf<(@Composable BoxScope.() -> Unit)?>(null) }
+
     val themeManager = remember { ThemeSettingsManager(context) }
     val themeState by themeManager.themeStateFlow.collectAsState(initial = AppThemeState())
-
-    // 🌟 2. 动态模糊的逻辑移到这里
     val dynamicBlur = if (currentRoute?.startsWith("edit/") == true) 15.dp else 0.dp
-    // 🌟 3. 最外层根容器 (包含底层的背景/内容，以及顶层的悬浮导航栏)
-    Box(modifier = Modifier.fillMaxSize()) {
 
-        Box(modifier = Modifier.fillMaxSize().haze(state = hazeState)) {
+    // 🌟 广播通道，让所有子页面都能拿到相机和插槽
+    CompositionLocalProvider(
+        LocalGlobalHazeState provides hazeState,
+        LocalFloatingUI provides floatingUIState
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
 
-            // 铺上自定义背景
-            AppBackgroundContainer(themeState = themeState, blurRadius = dynamicBlur) {
-
-                // 原本透明的 NavHost 放进背景容器里
-                NavHost(
-                    navController = navController,
-                    startDestination = "home",
-                    modifier = Modifier.fillMaxSize(),
-                    // === 🌟 核心修复：精简 Haze 容器下的转场动画 ===
-                    enterTransition = {
-                        val initialRoute = initialState.destination.route?.lowercase() ?: ""
-                        val targetRoute = targetState.destination.route?.lowercase() ?: ""
-
-                        // 移除滑动，仅保留淡入淡出，极大减轻 GPU 在模糊运算时的负担
-                        if ((initialRoute.contains("home") && targetRoute.contains("settings")) ||
-                            (initialRoute.contains("settings") && targetRoute.contains("home"))
-                        ) {
-                            fadeIn(tween(300, easing = FastOutSlowInEasing))
-                        } else {
-                            slideInHorizontally(
-                                initialOffsetX = { it },
-                                animationSpec = tween(300, easing = FastOutSlowInEasing)
-                            ) + fadeIn(tween(300))
+            // ==========================================================
+            // 第 1 层：全局背景源 (挂载 hazeSource，提供背景给上层)
+            // ==========================================================
+            Box(modifier = Modifier.fillMaxSize().hazeSource(state = hazeState)) {
+                AppBackgroundContainer(themeState = themeState, blurRadius = dynamicBlur) {
+                    NavHost(
+                        navController = navController,
+                        startDestination = "home",
+                        modifier = Modifier.fillMaxSize(),
+                        // === 转场动画保持不变 ===
+                        enterTransition = {
+                            val initialRoute = initialState.destination.route?.lowercase() ?: ""
+                            val targetRoute = targetState.destination.route?.lowercase() ?: ""
+                            if ((initialRoute.contains("home") && targetRoute.contains("settings")) ||
+                                (initialRoute.contains("settings") && targetRoute.contains("home"))
+                            ) {
+                                fadeIn(tween(300, easing = FastOutSlowInEasing))
+                            } else {
+                                slideInHorizontally(
+                                    initialOffsetX = { it },
+                                    animationSpec = tween(300, easing = FastOutSlowInEasing)
+                                ) + fadeIn(tween(300))
+                            }
+                        },
+                        exitTransition = {
+                            val initialRoute = initialState.destination.route?.lowercase() ?: ""
+                            val targetRoute = targetState.destination.route?.lowercase() ?: ""
+                            if ((initialRoute.contains("home") && targetRoute.contains("settings")) ||
+                                (initialRoute.contains("settings") && targetRoute.contains("home"))
+                            ) {
+                                fadeOut(tween(300, easing = FastOutSlowInEasing))
+                            } else {
+                                slideOutHorizontally(
+                                    targetOffsetX = { -it },
+                                    animationSpec = tween(300, easing = FastOutSlowInEasing)
+                                ) + fadeOut(tween(300))
+                            }
+                        },
+                        popEnterTransition = {
+                            val initialRoute = initialState.destination.route?.lowercase() ?: ""
+                            val targetRoute = targetState.destination.route?.lowercase() ?: ""
+                            if ((initialRoute.contains("settings") && targetRoute.contains("home")) ||
+                                (initialRoute.contains("home") && targetRoute.contains("settings"))
+                            ) {
+                                fadeIn(tween(300, easing = FastOutSlowInEasing))
+                            } else {
+                                slideInHorizontally(
+                                    initialOffsetX = { -it },
+                                    animationSpec = tween(300, easing = FastOutSlowInEasing)
+                                ) + fadeIn(tween(300))
+                            }
+                        },
+                        popExitTransition = {
+                            val initialRoute = initialState.destination.route?.lowercase() ?: ""
+                            val targetRoute = targetState.destination.route?.lowercase() ?: ""
+                            if ((initialRoute.contains("settings") && targetRoute.contains("home")) ||
+                                (initialRoute.contains("home") && targetRoute.contains("settings"))
+                            ) {
+                                fadeOut(tween(300, easing = FastOutSlowInEasing))
+                            } else {
+                                slideOutHorizontally(
+                                    targetOffsetX = { it },
+                                    animationSpec = tween(300, easing = FastOutSlowInEasing)
+                                ) + fadeOut(tween(300))
+                            }
                         }
-                    },
-                    exitTransition = {
-                        val initialRoute = initialState.destination.route?.lowercase() ?: ""
-                        val targetRoute = targetState.destination.route?.lowercase() ?: ""
-
-                        if ((initialRoute.contains("home") && targetRoute.contains("settings")) ||
-                            (initialRoute.contains("settings") && targetRoute.contains("home"))
-                        ) {
-                            fadeOut(tween(300, easing = FastOutSlowInEasing))
-                        } else {
-                            slideOutHorizontally(
-                                targetOffsetX = { -it },
-                                animationSpec = tween(300, easing = FastOutSlowInEasing)
-                            ) + fadeOut(tween(300))
-                        }
-                    },
-                    popEnterTransition = {
-                        val initialRoute = initialState.destination.route?.lowercase() ?: ""
-                        val targetRoute = targetState.destination.route?.lowercase() ?: ""
-
-                        if ((initialRoute.contains("settings") && targetRoute.contains("home")) ||
-                            (initialRoute.contains("home") && targetRoute.contains("settings"))
-                        ) {
-                            fadeIn(tween(300, easing = FastOutSlowInEasing))
-                        } else {
-                            slideInHorizontally(
-                                initialOffsetX = { -it },
-                                animationSpec = tween(300, easing = FastOutSlowInEasing)
-                            ) + fadeIn(tween(300))
-                        }
-                    },
-                    popExitTransition = {
-                        val initialRoute = initialState.destination.route?.lowercase() ?: ""
-                        val targetRoute = targetState.destination.route?.lowercase() ?: ""
-
-                        if ((initialRoute.contains("settings") && targetRoute.contains("home")) ||
-                            (initialRoute.contains("home") && targetRoute.contains("settings"))
-                        ) {
-                            fadeOut(tween(300, easing = FastOutSlowInEasing))
-                        } else {
-                            slideOutHorizontally(
-                                targetOffsetX = { it },
-                                animationSpec = tween(300, easing = FastOutSlowInEasing)
-                            ) + fadeOut(tween(300))
-                        }
-                    }
-                ) {
-                    // ... 底下的 composable 路由保持不变 ...
-                    // ==================================================================
-                    // 🌟 路由注册表升级：将 noteViewModel 传入需要修改数据的页面
-                    // ==================================================================
-                    composable("home") {
-                        val actContext = LocalContext.current
-
-                        // 返回桌面机制：拦截物理返回键，模拟按下系统“Home”键
-                        BackHandler {
-                            val intent =
-                                android.content.Intent(android.content.Intent.ACTION_MAIN).apply {
+                    ) {
+                        composable("home") {
+                            val actContext = LocalContext.current
+                            BackHandler {
+                                val intent = android.content.Intent(android.content.Intent.ACTION_MAIN).apply {
                                     addCategory(android.content.Intent.CATEGORY_HOME)
                                     flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
                                 }
-                            actContext.startActivity(intent)
+                                actContext.startActivity(intent)
+                            }
+                            HomeScreen(notes, showDate, navController, noteViewModel)
                         }
 
-                        // 注入 noteViewModel 供操作数据
-                        HomeScreen(notes, showDate, navController, noteViewModel)
-                    }
-
-                    composable("settings") {
-                        // 🌟 新增：把 noteViewModel 传给设置页，让它接管恢复备份和导入操作
-                        SettingsScreen(notes, showDate, navController, noteViewModel) {
-                            showDate = it
+                        composable("settings") {
+                            SettingsScreen(notes, showDate, navController, noteViewModel) { showDate = it }
                         }
-                    }
 
-                    composable("archive") {
-                        // 注入 noteViewModel 供恢复归档，并传入 themeState 供双态切换
-                        ArchiveScreen(
-                            notes = notes,
-                            showDate = showDate,
-                            navController = navController,
-                            noteViewModel = noteViewModel,
-                            themeState = themeState // 🌟 核心补全：传入主题状态
-                        )
-                    }
+                        composable("archive") {
+                            // 🌟 删除了 hazeState 传参
+                            ArchiveScreen(notes, showDate, navController, noteViewModel, themeState)
+                        }
 
-                    composable("trash") {
-                        // 注入 noteViewModel 供清空/恢复废纸篓，并传入 themeState 供双态切换
-                        TrashScreen(
-                            notes = notes,
-                            showDate = showDate,
-                            navController = navController,
-                            noteViewModel = noteViewModel,
-                            themeState = themeState // 🌟 核心补全：传入主题状态
-                        )
-                    }
+                        composable("trash") {
+                            // 🌟 删除了 hazeState 传参
+                            TrashScreen(notes, showDate, navController, noteViewModel, themeState)
+                        }
 
-                    composable("todo_screen") {
-                        TodoScreen(
-                            navController = navController,
-                            // ... 其他参数 ...
-                            themeState = themeState // 🌟 新增这一行：把外层的 themeState 传递进去
-                        )
-                    }
+                        composable("todo_screen") {
+                            // 🌟 删除了 hazeState 传参
+                            TodoScreen(navController, themeState)
+                        }
 
-                    composable("more_settings_screen") {
-                        MoreSettingsScreen(navController)
-                    }
+                        composable("more_settings_screen") {
+                            // 🌟 极致瘦身：只需传 navController
+                            MoreSettingsScreen(navController = navController)
+                        }
 
-                    composable("edit/{noteId}") { backStackEntry ->
-                        val noteId = backStackEntry.arguments?.getString("noteId") ?: ""
-                        // 注入 noteViewModel 供保存笔记
-                        EditNoteScreen(navController, noteId, notes, noteViewModel)
+                        composable("edit/{noteId}") { backStackEntry ->
+                            val noteId = backStackEntry.arguments?.getString("noteId") ?: ""
+                            EditNoteScreen(navController, noteId, notes, noteViewModel)
+                        }
                     }
                 }
             }
+
+            // 第 2 层：全局主导航栏 (保持不变)
+            if (currentRoute == "home" || currentRoute == "settings") {
+                if (themeState.isLiquidNavEnabled) {
+                    Box(modifier = Modifier.align(Alignment.BottomCenter)) {
+                        BookNoteTheme {
+                            LiquidGlassNavigationBar(
+                                items = listOf(
+                                    BottomNavItem("home", "首页", Icons.Filled.Home, Icons.Outlined.Home),
+                                    BottomNavItem("settings", "设置", Icons.Filled.Settings, Icons.Outlined.Settings)
+                                ),
+                                currentRoute = currentRoute,
+                                onNavigate = { route ->
+                                    navController.navigate(route) {
+                                        popUpTo(navController.graph.startDestinationId) { saveState = true }
+                                        launchSingleTop = true
+                                        restoreState = true
+                                    }
+                                },
+                                onAddClick = { navController.navigate("edit/new") },
+                                hazeState = hazeState
+                            )
+                        }
+                    }
+                } else {
+                    Box(modifier = Modifier.align(Alignment.BottomCenter)) {
+                        BookNoteTheme {
+                            FloatingBottomBar(navController = navController, currentRoute = currentRoute)
+                        }
+                    }
+                }
+            }
+            // 🌟 第 3 层：各页面的动态插槽投射 (绝对平级，毛玻璃 100% 生效！)
+            floatingUIState.value?.invoke(this)
         }
-
-                // 🔮 底部导航栏逻辑保留
-                if (currentRoute == "home" || currentRoute == "settings") {
-                    if (themeState.isLiquidNavEnabled) {
-                        Box(modifier = Modifier.align(Alignment.BottomCenter)) {
-                            BookNoteTheme {
-                                LiquidGlassNavigationBar(
-                                    items = listOf(
-                                        BottomNavItem(
-                                            "home",
-                                            "首页",
-                                            Icons.Filled.Home,
-                                            Icons.Outlined.Home
-                                        ),
-                                        BottomNavItem(
-                                            "settings",
-                                            "设置",
-                                            Icons.Filled.Settings,
-                                            Icons.Outlined.Settings
-                                        )
-                                    ),
-                                    currentRoute = currentRoute,
-                                    onNavigate = { route ->
-                                        navController.navigate(route) {
-                                            popUpTo(navController.graph.startDestinationId) {
-                                                saveState = true
-                                            }
-                                            launchSingleTop = true
-                                            restoreState = true
-                                        }
-                                    },
-                                    onAddClick = {
-                                        navController.navigate("edit/new")
-                                    },
-                                    hazeState = hazeState
-                                )
-                            }
-                        }
-                    } else {
-                        Box(modifier = Modifier.align(Alignment.BottomCenter)) {
-                            BookNoteTheme {
-                                FloatingBottomBar(
-                                    navController = navController,
-                                    currentRoute = currentRoute
-                                    // 注意：align 属性已经安全转移给外层 Box，这里不再需要传 modifier
-                                )
-                            }
-                        }
-                    }
-                }
-            }
+    }
 }
