@@ -1254,7 +1254,7 @@ fun ArchiveScreen(
                                 .fillMaxWidth()
                                 .padding(
                                     bottom = WindowInsets.navigationBars.asPaddingValues()
-                                        .calculateBottomPadding() + 8.dp
+                                        .calculateBottomPadding() + 12.dp
                                 ),
                             horizontalArrangement = Arrangement.Center,
                             verticalAlignment = Alignment.CenterVertically
@@ -1480,7 +1480,7 @@ fun TrashScreen(
                                 .fillMaxWidth()
                                 .padding(
                                     bottom = WindowInsets.navigationBars.asPaddingValues()
-                                        .calculateBottomPadding() + 8.dp
+                                        .calculateBottomPadding() + 12.dp
                                 ),
                             horizontalArrangement = Arrangement.Center,
                             verticalAlignment = Alignment.CenterVertically

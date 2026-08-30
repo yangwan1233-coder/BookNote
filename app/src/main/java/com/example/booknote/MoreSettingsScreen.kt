@@ -97,7 +97,7 @@ fun MoreSettingsScreen(navController: NavHostController) { // 🌟 不再接收�
                                 .fillMaxWidth()
                                 .padding(
                                     bottom = WindowInsets.navigationBars.asPaddingValues()
-                                        .calculateBottomPadding() + 8.dp
+                                        .calculateBottomPadding() + 12.dp
                                 ),
                             horizontalArrangement = Arrangement.Center,
                             verticalAlignment = Alignment.CenterVertically
