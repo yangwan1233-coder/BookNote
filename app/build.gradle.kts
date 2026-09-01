@@ -14,8 +14,8 @@ android {
         minSdk = 31 // 门槛：最低只允许 Android 12 及以上的手机安装！抛弃老旧历史包袱。
         // 🌟 【核心修改】：靶心升级到 37，以 Android 17 为绝对优先的最高标准进行底层性能与 UI 优化！
         targetSdk = 37
-        versionCode = 30
-        versionName = "2.8.29"
+        versionCode = 31
+        versionName = "2.9.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

@@ -1,71 +1,122 @@
 package com.example.booknote
 
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.foundation.layout.IntrinsicSize
-import android.app.Activity
 import android.content.Context
-import android.content.Intent
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Crop
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.Redo
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.SubdirectoryArrowRight
+import androidx.compose.material.icons.filled.Undo
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.FloatingActionButtonDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.TextRange
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
-import androidx.navigation.NavHostController
-import coil.compose.AsyncImage
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageShader
 import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.zIndex
-import dev.shreyaspatil.capturable.controller.rememberCaptureController
-import androidx.compose.ui.graphics.asImageBitmap
-import dev.chrisbanes.haze.haze
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.navigation.NavHostController
+import coil.compose.AsyncImage
 import com.example.booknote.ui.theme.BookNoteTheme
+import dev.shreyaspatil.capturable.controller.rememberCaptureController
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 // ================== 第二部分：主页代码 ==================
 @Composable
@@ -544,7 +595,13 @@ fun EditNoteScreen(navController: NavHostController, noteId: String, notes: List
             }
 
             // 保留底部安全距离，防止键盘或悬浮栏遮挡最后一行字
-            Spacer(modifier = Modifier.height(140.dp))
+            // 完美适配键盘与悬浮栏的动态安全距离
+            Spacer(
+                modifier = Modifier
+                    .windowInsetsPadding(WindowInsets.ime)            // 1. 键盘弹起时，瞬间撑开键盘的真实高度（优先级最高）
+                    .windowInsetsPadding(WindowInsets.navigationBars) // 2. 键盘收起时，兜底避让系统小白条
+                    .height(10.dp)                                    // 3. 完美对齐你悬浮栏底部的 10.dp 视觉留白
+            )
         }
             Row(
                 modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp),
@@ -553,11 +610,11 @@ fun EditNoteScreen(navController: NavHostController, noteId: String, notes: List
                 // 1. 左侧：原封不动保留你的返回按钮
                 FloatingActionButton(
                     onClick = { onBack() },
-                    containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
+                    containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
                     contentColor = MaterialTheme.colorScheme.onPrimary,
                     shape = CircleShape,
                     elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 8.dp),
-                    modifier = Modifier.width(48.dp).height(48.dp)
+                    modifier = Modifier.width(58.dp).height(48.dp)
                 ) {
                     Icon(Icons.Default.ArrowBack, "返回", modifier = Modifier.scale(1.3f))
                 }
@@ -565,7 +622,7 @@ fun EditNoteScreen(navController: NavHostController, noteId: String, notes: List
                 // 2. 右侧：🌟 大厂级联排胶囊按钮 (分享长图 + 保存)
                 Surface(
                     shape = CircleShape,
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
                     contentColor = MaterialTheme.colorScheme.onPrimary, // 保证里面的图标颜色统一
                     shadowElevation = 8.dp,
                     modifier = Modifier.height(48.dp) // 与左侧返回按钮高度保持绝对一致
@@ -643,7 +700,7 @@ fun EditNoteScreen(navController: NavHostController, noteId: String, notes: List
                     // 🌟 修改：减少底部冗余留白，贴近系统安全区
                     .padding(
                         bottom = WindowInsets.navigationBars.asPaddingValues()
-                            .calculateBottomPadding() + 8.dp
+                            .calculateBottomPadding() + 10.dp
                     ),
                 contentAlignment = Alignment.Center
             ) {
@@ -946,19 +1003,48 @@ fun EditNoteScreen(navController: NavHostController, noteId: String, notes: List
             timestamp = currentNote.createdAt,
             imagePaths = imagePaths,
             activeBlocks = activeBlocks,
-            themeState = themeState,          // 👈 保留一次即可
-            customTextColor = customTextColor, // 👈 保留一次即可
-            exportBackgroundBrush = exportBrush, // 🌟 传入你的背景预设
+            themeState = themeState,
+            customTextColor = customTextColor,
+            exportBackgroundBrush = exportBrush,
             onCaptureComplete = { bitmap ->
                 isExporting = false
                 if (bitmap != null) {
                     scope.launch {
                         val success = saveBitmapToGallery(context, bitmap, title)
-                        topToastMessage = if (success) "🎉 长图已保存到相册" else "长图保存失败"
-                        showTopToast = true
+                        if (success) {
+                            // 🌟 成功分支：提示成功，执行保存，并退出
+                            topToastMessage = "🎉 长图已保存到相册，正在自动保存笔记..."
+                            showTopToast = true
+
+                            // 1. 提取当前界面的最新内容
+                            val newBlocksJson = BlockSerializer.serializeBlocks(activeBlocks)
+                            val pureTextPreview = activeBlocks
+                                .filterIsInstance<UITextBlock>()
+                                .joinToString("\n") { it.content.text }
+                                .trim()
+
+                            // 2. 构建最新笔记对象并直接保存入库
+                            val updatedNote = currentNote.copy(
+                                title = title,
+                                content = pureTextPreview,
+                                blocksJson = newBlocksJson,
+                                imagePaths = imagePaths,
+                                updatedAt = System.currentTimeMillis()
+                            )
+                            noteViewModel.saveNote(updatedNote)
+
+                            // 3. 稍作延迟让用户看清气泡提示，然后平滑退出页面
+                            kotlinx.coroutines.delay(1000)
+                            navController.popBackStack()
+                        } else {
+                            // 🌟 失败分支 1：写入相册失败
+                            topToastMessage = "保存相册失败：请先手动保存笔记，再次尝试分析卡片"
+                            showTopToast = true
+                        }
                     }
                 } else {
-                    topToastMessage = "长图生成失败"
+                    // 🌟 失败分支 2：Compose 截图引擎生成 Bitmap 失败
+                    topToastMessage = "长图生成失败：请先手动保存笔记，再次尝试分析卡片"
                     showTopToast = true
                 }
             }
@@ -1254,7 +1340,7 @@ fun ArchiveScreen(
                                 .fillMaxWidth()
                                 .padding(
                                     bottom = WindowInsets.navigationBars.asPaddingValues()
-                                        .calculateBottomPadding() + 12.dp
+                                        .calculateBottomPadding() + 10.dp
                                 ),
                             horizontalArrangement = Arrangement.Center,
                             verticalAlignment = Alignment.CenterVertically
@@ -1480,7 +1566,7 @@ fun TrashScreen(
                                 .fillMaxWidth()
                                 .padding(
                                     bottom = WindowInsets.navigationBars.asPaddingValues()
-                                        .calculateBottomPadding() + 12.dp
+                                        .calculateBottomPadding() + 10.dp
                                 ),
                             horizontalArrangement = Arrangement.Center,
                             verticalAlignment = Alignment.CenterVertically

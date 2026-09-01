@@ -120,8 +120,7 @@ fun NoteExportCanvas(
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 32.dp, vertical = 40.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
+                                    .padding(start = 32.dp, end = 32.dp, top = 40.dp, bottom = 16.dp),                                horizontalAlignment = Alignment.CenterHorizontally
                             ) {
                                 // ------------------------------------
                                 // ① 顶部：居中带阴影的品牌胶囊
@@ -214,14 +213,14 @@ fun NoteExportCanvas(
                                     }
                                 }
 
-                                Spacer(modifier = Modifier.height(20.dp))
+                                Spacer(modifier = Modifier.height(30.dp))
                                 HorizontalDivider(
                                     thickness = 2.dp,
-                                    color = customTextColor.copy(alpha = 0.51f)
+                                    color = customTextColor.copy(alpha = 0.31f)
                                 )
                                 Spacer(modifier = Modifier.height(12.dp))
 
-                                val dateStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(timestamp))
+                                val dateStr = SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(Date(timestamp))
                                 Text(
                                     text = "来自 BookNote · $dateStr",
                                     color = customTextColor.copy(alpha = 0.7f),

@@ -151,7 +151,7 @@ fun TodoScreen(
                                 .fillMaxWidth()
                                 .padding(
                                     bottom = WindowInsets.navigationBars.asPaddingValues()
-                                        .calculateBottomPadding() + 12.dp
+                                        .calculateBottomPadding() + 10.dp
                                 ),
                             horizontalArrangement = Arrangement.Center,
                             verticalAlignment = Alignment.CenterVertically

@@ -282,7 +282,10 @@ fun SwipeHoverNoteCard(
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
             elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
         ) {
-            Row(modifier = Modifier.fillMaxWidth().padding(vertical = 18.dp, horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 18.dp, horizontal = 24.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 if (showDate) Text(text = formatTime(note.createdAt), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f), modifier = Modifier.padding(end = 12.dp))
 
                 if (note.imagePaths.isNotEmpty()) {

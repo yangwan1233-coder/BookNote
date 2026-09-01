@@ -800,7 +800,7 @@ fun MoreSettingsThemeOptions(
                     } // 👈 结束内部 Column
                 } // 👈 结束 AnimatedVisibility
             } // 👈 结束主 Column
-            Spacer(modifier = Modifier.height(8.dp)) // 放大间距：
+            //Spacer(modifier = Modifier.height(8.dp)) // 放大间距：
         } // 👈 结束字体颜色 Card
 
         //导图选项
@@ -1010,7 +1010,7 @@ fun MoreSettingsThemeOptions(
             }
 
 
-            Spacer(modifier = Modifier.height(8.dp)) // 放大间距：与上方字体卡片拉开更大的呼吸空间
+            //Spacer(modifier = Modifier.height(8.dp)) // 放大间距：与上方字体卡片拉开更大的呼吸空间
         }
 
 
