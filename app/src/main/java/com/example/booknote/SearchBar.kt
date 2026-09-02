@@ -95,7 +95,7 @@ fun FloatingSearchTopBar(
                 }
                 Surface(
                     shape = CircleShape,
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 1f),
                     shadowElevation = 8.dp,
                     modifier = Modifier.size(52.dp)
                 ) {
