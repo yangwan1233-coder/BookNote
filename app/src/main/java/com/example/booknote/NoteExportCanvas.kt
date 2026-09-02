@@ -3,7 +3,17 @@ package com.example.booknote
 import android.graphics.Bitmap
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -29,7 +39,6 @@ import dev.shreyaspatil.capturable.Capturable
 import dev.shreyaspatil.capturable.controller.CaptureController
 import java.text.SimpleDateFormat
 import java.util.Date
-import java.util.Locale
 
 @Composable
 fun NoteExportCanvas(
@@ -79,23 +88,23 @@ fun NoteExportCanvas(
                         contentAlignment = Alignment.TopCenter
                     ) {
                         // ==========================================
-                        // 💳 内层卡片本体：上层背景、恢复大圆角、弥散阴影
+                        // 💳 内层卡片本体：降级为 Box，彻底绕开 GPU 纹理高度限制
                         // ==========================================
-                        Surface(
+                        Box( // 🌟 核心修复：把 Surface 换成了 Box，避免长文渲染被截断
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .wrapContentHeight()
-                                // 🌟 1. 先铺底色：保证“默认纯色”预设时有主题色兜底，且恢复 32dp 圆角
+                                // 🌟 1. 先铺底色
                                 .background(
                                     color = Color(themeState.bgColorHex),
                                     shape = RoundedCornerShape(32.dp)
                                 )
-                                // 🌟 2. 叠加导图预设背景：如果有特色图案，就完美覆盖在底色上
+                                // 🌟 2. 叠加导图预设背景
                                 .then(
                                     if (exportBackgroundBrush != null) {
                                         Modifier.background(
                                             brush = exportBackgroundBrush,
-                                            shape = RoundedCornerShape(32.dp) // 同步加上圆角
+                                            shape = RoundedCornerShape(32.dp)
                                         )
                                     } else Modifier
                                 )
@@ -112,19 +121,16 @@ fun NoteExportCanvas(
                                         end = androidx.compose.ui.geometry.Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)
                                     ),
                                     shape = RoundedCornerShape(32.dp)
-                                ),
-                            shape = RoundedCornerShape(32.dp),
-                            color = Color.Transparent, // 🌟 表面必须透明，才能透出上面 Modifier 里画好的背景
-                            shadowElevation = 16.dp // 柔和弥散阴影
+                                )
                         ) {
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(start = 32.dp, end = 32.dp, top = 40.dp, bottom = 16.dp),                                horizontalAlignment = Alignment.CenterHorizontally
+                                    .padding(start = 32.dp, end = 32.dp, top = 40.dp, bottom = 16.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
                             ) {
                                 // ------------------------------------
                                 // ① 顶部：居中带阴影的品牌胶囊
-                                // (👇 下面的代码一字不差，继续保留你的内容)
                                 Surface(
                                     shape = CircleShape,
                                     color = MaterialTheme.colorScheme.surfaceVariant,
@@ -155,10 +161,10 @@ fun NoteExportCanvas(
                                 // ② 标题
                                 Text(
                                     text = if (title.isBlank()) "无标题笔记" else title,
-                                    fontSize = 28.sp,
+                                    fontSize = 24.sp,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = customTextColor,
-                                    lineHeight = 38.sp,
+                                    lineHeight = 30.sp,
                                     textAlign = TextAlign.Center,
                                     modifier = Modifier.fillMaxWidth()
                                 )
@@ -189,7 +195,7 @@ fun NoteExportCanvas(
                                                     Text(
                                                         text = block.content.text,
                                                         fontSize = 20.sp,
-                                                        color = customTextColor.copy(alpha = 0.85f),
+                                                        color = customTextColor.copy(alpha = 1f),
                                                         lineHeight = 28.sp,
                                                         letterSpacing = 0.5.sp,
                                                         modifier = Modifier.padding(vertical = 6.dp)
@@ -223,7 +229,7 @@ fun NoteExportCanvas(
                                 val dateStr = SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(Date(timestamp))
                                 Text(
                                     text = "来自 BookNote · $dateStr",
-                                    color = customTextColor.copy(alpha = 0.7f),
+                                    color = customTextColor.copy(alpha = 0.8f),
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Medium
                                 )

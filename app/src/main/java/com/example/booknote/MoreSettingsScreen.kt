@@ -65,6 +65,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
@@ -155,24 +157,27 @@ fun MoreSettingsScreen(navController: NavHostController) { // 🌟 不再接收�
                                 ),
                             contentAlignment = Alignment.Center
                         ) {
-                            Surface(
-                                shape = CircleShape,
-                                color = MaterialTheme.colorScheme.surfaceVariant,
-                                modifier = Modifier
-                                    .width(100.dp)
-                                    .height(56.dp)
-                                    .clip(CircleShape)
-                                    .clickable { currentNavController.popBackStack() }
-                            ) {
-                                Box(
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentAlignment = Alignment.Center
+                            BookNoteTheme {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = MaterialTheme.colorScheme.primaryContainer,
+                                    modifier = Modifier.width(100.dp).height(56.dp)
+                                        .shadow(elevation = 8.dp, shape = CircleShape)
+                                        .clip(CircleShape)
+                                        .clickable { currentNavController.popBackStack() }
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Default.ArrowBack,
-                                        contentDescription = "返回",
-                                        tint = MaterialTheme.colorScheme.primary
-                                    )
+                                    Box(
+                                        modifier = Modifier.fillMaxSize()
+                                            .background(MaterialTheme.colorScheme.primaryContainer),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.ArrowBack,
+                                            contentDescription = "返回",
+                                            tint = MaterialTheme.colorScheme.primary ,
+                                                    modifier = Modifier.scale(1.2f) // 👈 整体放大 1.2 倍
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -197,11 +202,14 @@ fun MoreSettingsScreen(navController: NavHostController) { // 🌟 不再接收�
 
                 // ================= 1. 顶部标题 =================
                 Surface(
-                    shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer, shadowElevation = 8.dp
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 1f),
+                    shadowElevation = 8.dp
                 ) {
                     Text(
-                        text = "更多设置", fontSize = 24.sp, fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer, textAlign = TextAlign.Center,
+                        text = "更多设置", fontSize = 20.sp, fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        textAlign = TextAlign.Center,
                         modifier = Modifier.padding(horizontal = 32.dp, vertical = 12.dp)
                     )
                 }
@@ -217,7 +225,7 @@ fun MoreSettingsScreen(navController: NavHostController) { // 🌟 不再接收�
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(28.dp),
                     elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-                    colors = CardDefaults.cardColors(MaterialTheme.colorScheme.primaryContainer)
+                    colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceVariant)
                 ) {
                     Column(modifier = Modifier.fillMaxWidth()) {
                         Row(
@@ -230,7 +238,9 @@ fun MoreSettingsScreen(navController: NavHostController) { // 🌟 不再接收�
                             Spacer(modifier = Modifier.size(24.dp))
                             Text(
                                 text = "🧩 添加桌面小部件", fontSize = 16.sp, fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center, modifier = Modifier.weight(1f)
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.weight(1f)
                             )
                             Icon(
                                 imageVector = Icons.Default.ExpandMore, contentDescription = "展开或收起",

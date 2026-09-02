@@ -1,5 +1,8 @@
 package com.example.booknote // 👈 请保持您原有的 package 路径
 
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -14,43 +17,67 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.Palette
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.launch
-import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageShader
 import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
-import androidx.media3.effect.Crop
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
-import androidx.compose.animation.animateContentSize
 
 // 将相册的临时图片复制到 App 的私有目录，实现永久保存
 suspend fun saveImageToInternalStorage(context: Context, uri: Uri): String? {
@@ -99,6 +126,22 @@ fun MoreSettingsThemeOptions(
     // 相册选择器
     val context = LocalContext.current // 获取上下文
 
+    // 🌟 新增：智能权限请求器，精准识别用户的三种选择
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val grantedAll = permissions[android.Manifest.permission.READ_MEDIA_IMAGES] == true
+        val grantedPartial = permissions[android.Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED] == true
+
+        if (grantedAll) {
+            android.widget.Toast.makeText(context, "已允许访问全部图片", android.widget.Toast.LENGTH_SHORT).show()
+        } else if (grantedPartial) {
+            android.widget.Toast.makeText(context, "已允许访问部分图片", android.widget.Toast.LENGTH_SHORT).show()
+        } else {
+            android.widget.Toast.makeText(context, "已拒绝访问", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri: Uri? ->
@@ -131,9 +174,8 @@ fun MoreSettingsThemeOptions(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(28.dp), // 👈 增大圆角，与底部导航栏一致
             elevation = CardDefaults.cardElevation(defaultElevation = 6.dp), // 👈 增加质感阴影
-            colors = CardDefaults.cardColors(MaterialTheme.colorScheme.primaryContainer
-                //containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f) // 透光适应全局背景
-            )
+            colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceVariant)
+
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
                 // 可点击的头部标题栏
@@ -151,7 +193,7 @@ fun MoreSettingsThemeOptions(
                         text = "🌓 外观主题模式",
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.weight(1f) // 👈 标题完美居中
                     )
@@ -247,9 +289,8 @@ fun MoreSettingsThemeOptions(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(28.dp), // 👈 增大圆角
             elevation = CardDefaults.cardElevation(defaultElevation = 6.dp), // 👈 增加阴影
-            colors = CardDefaults.cardColors(MaterialTheme.colorScheme.primaryContainer
-                //containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
-            )
+            colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceVariant)
+
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
                 // 可点击的头部标题栏
@@ -267,7 +308,7 @@ fun MoreSettingsThemeOptions(
                         text = "🎨 全局自定义背景",
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.weight(1f) // 👈 标题完美居中
                     )
@@ -557,9 +598,8 @@ fun MoreSettingsThemeOptions(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(28.dp),
             elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-            colors = CardDefaults.cardColors(MaterialTheme.colorScheme.primaryContainer
-                //containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
-            )
+            colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceVariant)
+
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
                 Row(
@@ -576,7 +616,7 @@ fun MoreSettingsThemeOptions(
                         text = "✍️ 笔记字体颜色定制",
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.weight(1f)
                     )
@@ -892,9 +932,8 @@ fun MoreSettingsThemeOptions(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(28.dp), // 👈 统一为 28.dp 大圆角
             elevation = CardDefaults.cardElevation(defaultElevation = 6.dp), // 👈 增加质感阴影
-            colors = CardDefaults.cardColors(MaterialTheme.colorScheme.primaryContainer
-                //containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
-            )
+            colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceVariant)
+
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
                 // 卡片头部（点击可折叠/展开）
@@ -912,7 +951,7 @@ fun MoreSettingsThemeOptions(
                         text = "🖼️ 分享卡片背景定制", // 👈 加了个 Emoji，保持风格统一
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.weight(1f) // 👈 占满剩余空间，实现完美居中
                     )
@@ -1026,13 +1065,13 @@ fun MoreSettingsThemeOptions(
         // 🌟 2. 替换为统一规范的 Card 样式
         Card(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 16.dp),
+                .fillMaxWidth(),
+                //.padding(bottom = 16.dp),
             shape = RoundedCornerShape(28.dp), // 保持 28.dp 大圆角
             elevation = CardDefaults.cardElevation(defaultElevation = 6.dp), // 统一阴影高度
-            colors = CardDefaults.cardColors(MaterialTheme.colorScheme.primaryContainer
+            colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceVariant)
                 //containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f) // 统一透光背景色
-            )
+
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
                 // 卡片头部（点击可折叠/展开）
@@ -1050,7 +1089,7 @@ fun MoreSettingsThemeOptions(
                         text = "💎 玻璃导航栏",
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.weight(1f) // 占满剩余空间，实现完美居中
                     )
@@ -1106,6 +1145,304 @@ fun MoreSettingsThemeOptions(
                 }
             }
         }
+
+        // =================================================================
+        // 🌟 新加卡片：关于软件 (隐私、权限设置、更新)
+        // =================================================================
+        var isAboutSoftwareExpanded by remember { mutableStateOf(false) }
+        val aboutArrowRotation by animateFloatAsState(
+            targetValue = if (isAboutSoftwareExpanded) 180f else 0f,
+            label = "AboutArrowRotation"
+        )
+        var showUpdateDialog by remember { mutableStateOf(false) }
+
+        Card(
+            // 🌟 核心修复：去掉了多余的 padding，让外层容器的 spacedBy(16.dp) 自动控制完美间距
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(28.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+            colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceVariant)
+
+            //colors = CardDefaults.cardColors(MaterialTheme.colorScheme.primaryContainer)
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                // 卡片头部
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { isAboutSoftwareExpanded = !isAboutSoftwareExpanded }
+                        .padding(horizontal = 20.dp, vertical = 18.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Spacer(modifier = Modifier.size(24.dp))
+
+                    Text(
+                        text = "ℹ️ 关于BookNote",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+
+                                //color = MaterialTheme.colorScheme.onSurface,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    Icon(
+                        imageVector = Icons.Default.ExpandMore,
+                        contentDescription = "展开或收起",
+                        modifier = Modifier
+                            .size(24.dp)
+                            .rotate(aboutArrowRotation),
+                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                    )
+                }
+
+                // 折叠内容区域
+                AnimatedVisibility(
+                    visible = isAboutSoftwareExpanded,
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut()
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 16.dp, end = 16.dp, bottom = 18.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        // 🌟 新增：动态获取系统真实的 versionName (例如 1.0.0)
+                        val versionName = remember {
+                            try {
+                                context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "未知版本"
+                            } catch (e: Exception) {
+                                "未知版本"
+                            }
+                        }
+
+                        // 0. 版本号展示栏 (不可点击，仅作展示)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                                .padding(horizontal = 16.dp, vertical = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "当前版本",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            // 动态拼接 "v" + 真实版本号
+                            Text(
+                                text = "v$versionName",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        // 1. 隐私声明说明 (仅文本)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    text = "隐私说明",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "为提供完整的笔记体验，本软件可能需要访问您的相册照片、视频等相关存储权限。所有数据均保存在您的设备本地。",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    lineHeight = 16.sp
+                                )
+                            }
+                        }
+
+                        // ==========================================
+                        // 1. 动态相册授权 (触发系统三选一弹窗)
+                        // ==========================================
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                                .clickable {
+                                    val permissionsToRequest = if (android.os.Build.VERSION.SDK_INT >= 34) {
+                                        // Android 14 及以上，触发原生三选一底窗
+                                        arrayOf(
+                                            android.Manifest.permission.READ_MEDIA_IMAGES,
+                                            android.Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED
+                                        )
+                                    } else if (android.os.Build.VERSION.SDK_INT >= 33) {
+                                        arrayOf(android.Manifest.permission.READ_MEDIA_IMAGES)
+                                    } else {
+                                        arrayOf(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+                                    }
+                                    permissionLauncher.launch(permissionsToRequest)
+                                }
+                                .padding(horizontal = 16.dp, vertical = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "相册访问权限",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "管理应用内读取图片的授权状态",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Icon(
+                                imageVector = Icons.Default.Image,
+                                contentDescription = "授权",
+                                modifier = Modifier.size(20.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+
+                        // ==========================================
+                        // 2. 兜底方案：系统权限设置 (直接跳转 OS 详情页)
+                        // ==========================================
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                                .clickable {
+                                    try {
+                                        val intent = android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                            data = android.net.Uri.fromParts("package", context.packageName, null)
+                                        }
+                                        context.startActivity(intent)
+                                    } catch (e: Exception) {
+                                        e.printStackTrace()
+                                    }
+                                }
+                                .padding(horizontal = 16.dp, vertical = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "系统详细权限设置",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "前往系统设置深度管理各项权限",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Icon(
+                                imageVector = Icons.Default.ExpandMore,
+                                contentDescription = "前往设置",
+                                modifier = Modifier.rotate(270f).size(20.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+
+                        // 3. 下载与更新
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                                .clickable { showUpdateDialog = true }
+                                .padding(horizontal = 16.dp, vertical = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "下载与更新",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "前往 GitHub 检查并获取最新版本",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Icon(
+                                imageVector = Icons.Default.ExpandMore,
+                                contentDescription = "前往",
+                                modifier = Modifier.rotate(270f).size(20.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // 兜底留白：保证滑动到最底部时，最后一个卡片不会紧贴屏幕边缘
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // =================================================================
+        // 🌐 下载更新确认弹窗
+        // =================================================================
+        if (showUpdateDialog) {
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { showUpdateDialog = false },
+                title = {
+                    androidx.compose.material3.Text("跳转到浏览器", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                },
+                text = {
+                    androidx.compose.material3.Text(
+                        text = "您即将离开本应用，并在外部浏览器中打开以下网址检查更新：\n\nhttps://github.com/yangwan1233-coder/BookNote/releases\n\n是否同意跳转？",
+                        fontSize = 14.sp,
+                        lineHeight = 20.sp
+                    )
+                },
+                confirmButton = {
+                    androidx.compose.material3.Button(
+                        onClick = {
+                            showUpdateDialog = false
+                            try {
+                                val intent = android.content.Intent(
+                                    android.content.Intent.ACTION_VIEW,
+                                    Uri.parse("https://github.com/yangwan1233-coder/BookNote/releases")
+                                )
+                                context.startActivity(intent)
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
+                        }
+                    ) {
+                        androidx.compose.material3.Text("同意并前往")
+                    }
+                },
+                dismissButton = {
+                    androidx.compose.material3.TextButton(onClick = { showUpdateDialog = false }) {
+                        androidx.compose.material3.Text("取消")
+                    }
+                }
+            )
+        }
+
     }// 👈 这个括号极其重要！它是结束最外层主 Column 的！
 
     // =================================================================

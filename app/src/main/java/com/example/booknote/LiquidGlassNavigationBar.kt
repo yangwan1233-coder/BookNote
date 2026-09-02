@@ -356,8 +356,8 @@ fun LiquidGlassSingleButton(
     // 🌟 完全照搬主页导航栏的缩放公式！
     val barWidth = baseWidth * (1f + 0.10f * liftProgress)
     val barHeight = baseHeight * (1f + 0.10f * liftProgress)
-    val indicatorPadding = (6f - 1.2f * liftProgress).dp
-    val indicatorScale = 1f + 0.35f * liftProgress
+    val indicatorPadding = (8f - 1.2f * liftProgress).dp
+    val indicatorScale = 1f + 0.3f * liftProgress
     val blurRadius = (12 - 6 * liftProgress).dp
     val borderAlphaBoost = 1f + 0.3f * liftProgress
 
